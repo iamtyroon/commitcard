@@ -1,0 +1,38 @@
+{
+  "name": "commitcard",
+  "version": "1.0.0",
+  "description": "Render a shareable GitHub-style commit-stats card for a day (or week) of commits, sized for Twitter/X and social posts.",
+  "type": "module",
+  "bin": {
+    "commitcard": "bin/commitcard.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "card": "node bin/commitcard.mjs"
+  },
+  "keywords": [
+    "git",
+    "github",
+    "stats",
+    "card",
+    "social",
+    "twitter",
+    "screenshot",
+    "changelog",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/commitcard.git"
+  }
+}
