@@ -96,6 +96,7 @@ Card:
   --avatar <url|path>     avatar image or a direct image URL
   --note <text>           replace the default footer note
   --max-rows <n>          commits listed (default 8)
+  --max-commits <n>       cap on commits analysed (default 1000)
   --tz <hours>            timezone offset for "today" & times (e.g. 3)
   --no-bulk-tag           hide the "bulk" badge
 
@@ -175,13 +176,13 @@ function autoHeight({ rows, focusRow, histo, preset }) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2))
-  if (opts.help || (!opts.repo && !opts.cwd)) {
-    console.log(HELP)
-    return
-  }
   if (opts['list-themes']) {
     console.log('themes:', Object.keys(THEMES).join(', '))
     console.log('presets:', Object.keys(PRESETS).join(', '))
+    return
+  }
+  if (opts.help || (!opts.repo && !opts.cwd)) {
+    console.log(HELP)
     return
   }
   if (!opts.repo && !opts.cwd) {
