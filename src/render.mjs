@@ -99,6 +99,7 @@ export function renderCard(opts) {
     preset = 'github',
     maxRows = 8,
     showBulkTag = true,
+    truncated = false,
   } = opts
   const t = THEMES[theme] ?? THEMES.dark
   const p = PRESETS[preset] ?? PRESETS.github
@@ -169,11 +170,14 @@ export function renderCard(opts) {
   const handleHtml = handle ? `<span class="handle">${esc(handle)}</span>` : ''
   const headTitle = esc(title ?? repoName)
   const headSub = esc(subtitle ?? '')
+  const truncNote = truncated
+    ? ` Showing the first ${sum.all.commits} commits (raise --max-commits for more).`
+    : ''
   const foot = esc(
     footerNote ??
       (sum.bulkCommits.length
-        ? `Totals across ${sum.all.commits} commits${label ? ` · ${label}` : ''}. Second row excludes ${sum.bulkCommits.length} bulk cleanup commit(s) (tagged "bulk") so source churn stays readable.`
-        : `Totals across ${sum.all.commits} commits${label ? ` · ${label}` : ''}.`),
+        ? `Totals across ${sum.all.commits} commits${label ? ` · ${label}` : ''}.${truncNote} Second row excludes ${sum.bulkCommits.length} bulk cleanup commit(s) (tagged "bulk") so source churn stays readable.`
+        : `Totals across ${sum.all.commits} commits${label ? ` · ${label}` : ''}.${truncNote}`),
   )
 
   return `<!doctype html>

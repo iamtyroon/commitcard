@@ -17,6 +17,7 @@ function parseArgs(argv) {
     preset: 'twitter',
     theme: 'dark',
     maxRows: 8,
+    maxCommits: 1000,
     tz: null,
     scale: 2,
   }
@@ -40,6 +41,7 @@ function parseArgs(argv) {
     cwd: 'cwd',
     tz: 'tz',
     'max-rows': 'maxRows',
+    'max-commits': 'maxCommits',
     scale: 'scale',
   }
   for (let i = 0; i < argv.length; i++) {
@@ -59,7 +61,7 @@ function parseArgs(argv) {
         i++
       } else v = 'true'
     }
-    if (k === 'maxRows' || k === 'tz' || k === 'scale') v = Number(v)
+    if (k === 'maxRows' || k === 'maxCommits' || k === 'tz' || k === 'scale') v = Number(v)
     out[k] = v
   }
   for (const b of ['open', 'json', 'help', 'no-bulk-tag', 'list-themes'])
@@ -201,6 +203,7 @@ async function main() {
       from,
       to,
       api: opts.api ?? '',
+      maxCommits: opts.maxCommits,
       onProgress: (d, t) => process.stderr.write(`\rfetched ${d}/${t} commits`),
     })
     process.stderr.write('\n')
@@ -216,6 +219,7 @@ async function main() {
     totals: sum.all,
     focusTotals: sum.focus,
     daily: series,
+    truncated: Boolean(data.truncated),
   }
   if (opts.json) {
     console.log(JSON.stringify(meta, null, 2))
@@ -243,6 +247,7 @@ async function main() {
     preset,
     maxRows: opts.maxRows,
     showBulkTag: !opts['no-bulk-tag'],
+    truncated: Boolean(data.truncated),
   })
 
   const dstr = label.replace(/[^\w-]/g, '') || 'range'

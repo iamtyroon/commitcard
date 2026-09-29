@@ -56,15 +56,30 @@ export async function collectFromGitHub({
   to,
   api: prefer,
   concurrency = 6,
+  maxCommits = 1000,
   onProgress,
 }) {
   const api = await pickApi(prefer)
   const meta = await api(`repos/${repo}`)
   const branch = ref || meta.default_branch
-  const list = await api(
-    `repos/${repo}/commits?sha=${branch}&since=${iso(from)}&until=${iso(to)}&per_page=100`,
-  )
-  if (!Array.isArray(list)) throw new Error('unexpected commit-list response')
+
+  // Paginate so multi-day ranges are exact instead of stopping at page 1.
+  const perPage = 100
+  const list = []
+  let truncated = false
+  for (let page = 1; list.length < maxCommits; page++) {
+    const batch = await api(
+      `repos/${repo}/commits?sha=${branch}&since=${iso(from)}&until=${iso(to)}&per_page=${perPage}&page=${page}`,
+    )
+    if (!Array.isArray(batch)) throw new Error('unexpected commit-list response')
+    list.push(...batch)
+    if (batch.length < perPage) break
+    if (list.length >= maxCommits) {
+      truncated = true
+      break
+    }
+  }
+  if (list.length > maxCommits) list.length = maxCommits
 
   const commits = []
   let done = 0
@@ -99,6 +114,7 @@ export async function collectFromGitHub({
     private: meta.private === true,
     ownerLogin: meta.owner?.login ?? null,
     ownerAvatar: meta.owner?.avatar_url ?? null,
+    truncated,
   }
 }
 

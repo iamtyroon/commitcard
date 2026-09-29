@@ -96,6 +96,7 @@ commitcard --repo owner/name today --json
 --avatar <url>      avatar image (defaults to the repo owner's)
 --note <text>       replace the default footer note
 --max-rows <n>      commits listed (default 8)
+--max-commits <n>   cap on commits analysed (default 1000); card says if it hits the cap
 --no-bulk-tag       hide the "bulk" badge
 
 --out <path>        output PNG (default ./commitcard-<date>.png)
