@@ -12,6 +12,7 @@
     --accentBg:rgba(31,111,235,.2); --accentBorder:#316dca;
   }
   *{box-sizing:border-box;margin:0;padding:0}
+  [hidden]{display:none!important}
   body{background:var(--bg);color:var(--text);
     font:15px/1.55 -apple-system,Segoe UI,Inter,Roboto,Helvetica,Arial,sans-serif}
   a{color:var(--accent)}
@@ -26,6 +27,34 @@
   .nav{margin-left:auto;display:flex;gap:16px;font-size:14px}
   .cols{display:grid;grid-template-columns:360px 1fr;gap:22px;margin-top:22px;align-items:start}
   @media(max-width:900px){.cols{grid-template-columns:1fr}}
+  .auth{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-top:22px}
+  .auth.signed{border-color:var(--accentBorder)}
+  .authrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .who{display:flex;align-items:center;gap:10px;min-width:0}
+  .who img{width:34px;height:34px;border-radius:50%;border:1px solid var(--border)}
+  .who b{font-size:14px}
+  .who span{display:block;font-size:12px;color:var(--muted)}
+  .auth .btn{margin:0;width:auto;flex:1;min-width:140px}
+  .auth .btn.ghost{background:transparent;color:var(--muted);border-color:var(--border);flex:0 0 auto}
+  .auth .btn.ghost:hover{color:var(--text);background:var(--panel2)}
+  .tokrow{display:none;margin-top:14px;gap:10px}
+  .tokrow.show{display:flex}
+  .tokrow input{flex:1}
+  .device{display:none;margin-top:14px;border:1px solid var(--border);border-radius:9px;padding:14px;background:var(--bg)}
+  .device.show{display:block}
+  .code{font:700 26px Consolas,monospace;letter-spacing:.22em;color:var(--accent);user-select:all;margin:6px 0 10px}
+  .repohead{display:flex;align-items:center;gap:8px;margin-top:14px}
+  .repohead label{margin:0;flex:1}
+  .picker{display:none;margin-top:8px;border:1px solid var(--border);border-radius:9px;
+    background:var(--bg);max-height:280px;overflow:auto}
+  .picker.show{display:block}
+  .picker button{display:flex;width:100%;align-items:center;gap:10px;padding:9px 12px;
+    background:none;border:0;border-bottom:1px solid var(--hair);color:var(--text);
+    font:13.5px inherit;cursor:pointer;text-align:left}
+  .picker button:hover{background:var(--panel2)}
+  .picker .lock{color:#d29922;font-size:12px}
+  .picker .own{color:var(--muted);font-size:12px;margin-left:auto}
+  .picker .none{padding:14px;color:var(--muted);font-size:13px}
   .form{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px}
   .form h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
     margin-bottom:14px;font-weight:600}
@@ -90,11 +119,54 @@
     </nav>
   </header>
 
+  <div class="auth" id="auth">
+    <div class="authrow">
+      <div class="who" id="who" hidden>
+        <img id="whoImg" alt="">
+        <div>
+          <b id="whoName"></b>
+          <span id="whoMeta"></span>
+        </div>
+      </div>
+      <div id="signedOut" style="display:flex;align-items:center;gap:12px;flex:1;flex-wrap:wrap">
+        <span style="font-size:13.5px;color:var(--muted)">Sign in to use private repos and pick from your repositories.</span>
+      </div>
+      <button class="btn" id="signin" type="button" style="flex:0 0 auto">Sign in with GitHub</button>
+      <button class="btn ghost" id="signout" type="button" hidden>Sign out</button>
+      <button class="btn ghost" id="useToken" type="button">Use a token</button>
+    </div>
+
+    <div class="device" id="device">
+      <div style="font-size:13.5px">Open <a id="devUrl" href="#" target="_blank" rel="noopener">github.com/login/device</a>
+        and enter this code:</div>
+      <div class="code" id="devCode">········</div>
+      <div style="font-size:12.5px;color:var(--muted)" id="devHint">Waiting for authorisation…</div>
+    </div>
+
+    <div class="tokrow" id="tokrow">
+      <input id="token" type="password" spellcheck="false" autocomplete="off"
+             placeholder="Paste a personal access token (repo scope)">
+      <button class="btn" id="tokenGo" type="button" style="width:auto">Use token</button>
+    </div>
+    <div class="note" style="margin-top:12px;font-size:12.5px">
+      Your token is kept in this tab only (memory + sessionStorage) and sent nowhere except
+      <code>api.github.com</code>. It is never written to disk by this page and disappears when
+      you close the tab. Prefer the CLI for long-lived access: <code>gh auth login</code>.
+    </div>
+  </div>
+
   <div class="cols">
     <form class="form" id="form">
       <h2>Card settings</h2>
       <label for="repo">Repository</label>
       <input id="repo" value="iamtyroon/commitcard" spellcheck="false" autocomplete="off" placeholder="owner/name">
+
+      <div class="repohead" id="repoHead" hidden>
+        <label for="repoSearch" style="margin:0">My repositories</label>
+      </div>
+      <input id="repoSearch" placeholder="Filter my repositories…" spellcheck="false"
+             autocomplete="off" style="display:none">
+      <div class="picker" id="picker"></div>
 
       <label for="range">Range</label>
       <select id="range">
@@ -136,8 +208,9 @@
         </div>
         <div class="viewport" id="viewport">
           <div class="empty" id="empty">
-            Public repositories only in the browser. For private repos, local git, and
-            unlimited ranges, use the CLI:<br><br><code>npx commitcard --repo owner/name today</code>
+            Pick a repository and hit <b>Generate card</b>.<br><br>
+            Sign in to include your private repositories, or use the CLI for local git
+            and unlimited ranges:<br><br><code>npx commitcard --repo owner/name today</code>
           </div>
           <div class="scaler" id="scaler" hidden><iframe id="frame" title="card preview"></iframe></div>
         </div>
@@ -148,9 +221,10 @@
         <h2>Same card from the CLI <span class="pill">full power</span></h2>
         <pre id="cmd">npx commitcard --repo owner/name today</pre>
         <div class="note">
-          The browser version reads the public GitHub API (60 requests/hour per IP) and analyses at
-          most <b>30</b> commits. The CLI has no such limit, works with private repos via
-          <code>gh auth login</code>, and can read a local checkout with <code>--cwd .</code>.
+          Signed out, the page uses the public GitHub API (60 requests/hour per IP, 30 commits).
+          Signed in, it uses your session (5,000 requests/hour, 200 commits) and can read
+          private repositories. The CLI goes further still: local git via <code>--cwd .</code>
+          and no caps.
         </div>
       </div>
     </div>
@@ -170,6 +244,30 @@ const HOUR = 3600e3, DAY = 24 * HOUR
 const MAX_COMMITS = 30
 const $ = (id) => document.getElementById(id)
 const localTz = -new Date().getTimezoneOffset() / 60
+
+// Optional GitHub OAuth App client_id for the "Sign in with GitHub" device flow.
+// Device flow needs no client secret, so a client_id is safe to embed in a public page.
+// Create a free OAuth App at github.com/settings/developers and paste its client_id here
+// to enable one-click sign-in. Leave it as '' to use the personal-token flow only.
+const GITHUB_CLIENT_ID = ''
+
+// Auth state. The token lives in memory + sessionStorage only: cleared when the tab
+// closes, never written to disk, and only ever sent to api.github.com.
+let token = sessionStorage.getItem('commitcard:token') || ''
+let viewer = null
+let myRepos = []
+
+function setToken(t) {
+  token = t || ''
+  if (token) sessionStorage.setItem('commitcard:token', token)
+  else sessionStorage.removeItem('commitcard:token')
+}
+
+function authHeaders(extra) {
+  const h = Object.assign({ accept: 'application/vnd.github+json' }, extra)
+  if (token) h.authorization = 'Bearer ' + token
+  return h
+}
 
 for (const [k, v] of Object.entries(PRESETS)) {
   const o = document.createElement('option')
@@ -204,11 +302,11 @@ function resolveRange(range, tz) {
 }
 
 async function api(path) {
-  const res = await fetch('https://api.github.com/' + path, {
-    headers: { accept: 'application/vnd.github+json' },
-  })
+  const res = await fetch('https://api.github.com/' + path, { headers: authHeaders() })
   if (res.status === 403 || res.status === 429) {
-    throw new Error('GitHub API rate limit reached (60/hour in the browser). Try later, or use the CLI.')
+    throw new Error(token
+      ? 'GitHub API rate limit reached. Try again shortly, or use the CLI.'
+      : 'GitHub API rate limit reached (60/hour in the browser). Sign in for 5,000/hour, or use the CLI.')
   }
   if (res.status === 404) throw new Error('Repository not found. It must be public to work here.')
   if (!res.ok) throw new Error('GitHub API error ' + res.status)
@@ -218,6 +316,148 @@ async function api(path) {
 function status(kind, text) {
   $('dot').className = 'dot ' + (kind || '')
   $('status').textContent = text
+}
+
+// ---- auth + repo picker ---------------------------------------------------
+
+async function loadViewer() {
+  viewer = await api('user')
+  $('whoImg').src = viewer.avatar_url
+  $('whoName').textContent = viewer.name || viewer.login
+  $('whoMeta').textContent = '@' + viewer.login
+  $('who').hidden = false
+  $('signedOut').style.display = 'none'
+  $('signin').hidden = true
+  $('signout').hidden = false
+  $('useToken').hidden = true
+  $('auth').classList.add('signed')
+  $('repoHead').hidden = false
+  $('repoSearch').style.display = ''
+  await loadRepos()
+}
+
+async function loadRepos() {
+  $('picker').classList.add('show')
+  $('picker').innerHTML = '<div class="none">Loading your repositories…</div>'
+  const all = []
+  for (let page = 1; page <= 4; page++) {
+    const batch = await api(
+      'user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member&page=' + page,
+    )
+    all.push(...batch)
+    if (batch.length < 100) break
+  }
+  myRepos = all
+  renderPicker($('repoSearch').value)
+}
+
+function renderPicker(filter) {
+  const q = filter.trim().toLowerCase()
+  const list = myRepos.filter(
+    (r) => !q || r.full_name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q),
+  )
+  if (!list.length) {
+    $('picker').innerHTML = '<div class="none">No repositories match.</div>'
+    return
+  }
+  $('picker').innerHTML = list
+    .slice(0, 200)
+    .map(
+      (r) =>
+        '<button type="button" data-full="' + r.full_name + '">' +
+        (r.private ? '<span class="lock">&#128274;</span>' : '') +
+        '<span>' + r.name + '</span>' +
+        '<span class="own">' + r.owner.login + '</span></button>',
+    )
+    .join('')
+  for (const b of $('picker').querySelectorAll('button')) {
+    b.addEventListener('click', () => {
+      $('repo').value = b.dataset.full
+      renderPicker($('repoSearch').value)
+      $('repoSearch').blur()
+    })
+  }
+}
+
+async function signOut() {
+  setToken('')
+  viewer = null
+  myRepos = []
+  $('who').hidden = true
+  $('signedOut').style.display = 'flex'
+  $('signin').hidden = false
+  $('signout').hidden = true
+  $('useToken').hidden = false
+  $('auth').classList.remove('signed')
+  $('repoHead').hidden = true
+  $('repoSearch').style.display = 'none'
+  $('picker').classList.remove('show')
+  $('picker').innerHTML = ''
+  status('', 'Signed out.')
+}
+
+// Personal access token flow — works with no app registration.
+async function useToken(raw) {
+  const t = (raw || '').trim()
+  if (!t) return
+  setToken(t)
+  $('tokrow').classList.remove('show')
+  $('token').value = ''
+  try {
+    await loadViewer()
+    status('ok', 'Signed in as @' + viewer.login + ' — private repos unlocked.')
+  } catch (e) {
+    setToken('')
+    signOut()
+    status('err', 'That token was not accepted. Check it has the repo scope.')
+  }
+}
+
+// Device flow — no secret required, but needs a registered OAuth App client_id.
+let pollTimer = null
+async function deviceSignIn() {
+  if (!GITHUB_CLIENT_ID) {
+    $('tokrow').classList.add('show')
+    status('err', 'One-click sign-in needs an OAuth App client_id. Paste a token instead (repo scope).')
+    return
+  }
+  try {
+    const res = await fetch('https://github.com/login/device/code?client_id=' + GITHUB_CLIENT_ID + '&scope=repo', {
+      method: 'POST',
+      headers: { accept: 'application/json' },
+    })
+    const d = await res.json()
+    if (!d.device_code) throw new Error(d.error || 'could not start sign-in')
+    $('device').classList.add('show')
+    $('devCode').textContent = d.user_code
+    $('devUrl').href = d.verification_uri
+    $('devHint').textContent = 'Waiting for you to authorise on GitHub…'
+    const poll = async () => {
+      const p = await fetch(
+        'https://github.com/login/oauth/access_token?client_id=' + GITHUB_CLIENT_ID +
+        '&device_code=' + d.device_code + '&grant_type=urn:ietf:params:oauth:grant-type:device_code',
+        { method: 'POST', headers: { accept: 'application/json' } },
+      )
+      const r = await p.json()
+      if (r.access_token) {
+        clearInterval(pollTimer)
+        $('device').classList.remove('show')
+        await useToken(r.access_token)
+        return
+      }
+      if (r.error === 'slow_down') return
+      if (r.error && r.error !== 'authorization_pending') {
+        clearInterval(pollTimer)
+        $('device').classList.remove('show')
+        status('err', 'Sign-in failed: ' + r.error)
+      }
+    }
+    clearInterval(pollTimer)
+    pollTimer = setInterval(poll, (d.interval || 5) * 1000)
+  } catch {
+    $('tokrow').classList.add('show')
+    status('err', 'Could not start GitHub sign-in. Paste a token instead.')
+  }
 }
 
 let lastHtml = null
@@ -272,6 +512,8 @@ async function generate() {
   const range = $('range').value
   const preset = $('preset').value
   const theme = $('theme').value
+  // Signed-in requests are far cheaper, so analyse a bigger window.
+  const cap = token ? 200 : MAX_COMMITS
   $('go').disabled = true
   $('dl').disabled = true
   $('copy').disabled = true
@@ -283,7 +525,7 @@ async function generate() {
     const branch = meta.default_branch
     const list = await api(
       'repos/' + repo + '/commits?sha=' + branch +
-      '&since=' + iso(from) + '&until=' + iso(to) + '&per_page=' + MAX_COMMITS,
+      '&since=' + iso(from) + '&until=' + iso(to) + '&per_page=' + cap,
     )
     if (!list.length) { status('err', 'No commits found for ' + label); return }
 
@@ -334,7 +576,7 @@ async function generate() {
     const sum = summarise(commits)
     status('ok', repo + ' · ' + label + ' · ' + sum.all.commits +
       ' commit' + (sum.all.commits > 1 ? 's' : '') +
-      (list.length >= MAX_COMMITS ? ' (browser cap reached — use the CLI for the full range)' : ''))
+      (list.length >= cap ? ' (browser cap reached — use the CLI for the full range)' : ''))
   } catch (e) {
     status('err', e.message)
   } finally {
@@ -401,6 +643,16 @@ async function download() {
 
 $('form').addEventListener('submit', (e) => { e.preventDefault(); generate() })
 $('dl').addEventListener('click', download)
+$('signin').addEventListener('click', deviceSignIn)
+$('signout').addEventListener('click', signOut)
+$('useToken').addEventListener('click', () => {
+  $('tokrow').classList.toggle('show')
+  if ($('tokrow').classList.contains('show')) $('token').focus()
+})
+$('tokenGo').addEventListener('click', () => useToken($('token').value))
+$('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); useToken($('token').value) } })
+$('repoSearch').addEventListener('input', (e) => renderPicker(e.target.value))
+$('repoSearch').addEventListener('focus', () => { $('picker').classList.add('show') })
 $('copy').addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText($('cmd').textContent)
@@ -411,6 +663,13 @@ $('copy').addEventListener('click', async () => {
   setTimeout(() => ($('copy').textContent = 'Copy CLI command'), 1400)
 })
 window.addEventListener('resize', () => { if (lastHtml) paint(lastHtml) })
+
+// Restore an existing session token (e.g. after a reload within the same tab).
+if (token) {
+  loadViewer()
+    .then(() => status('ok', 'Signed in as @' + viewer.login + ' — private repos unlocked.'))
+    .catch(() => setToken(''))
+}
 </script>
 </body>
 </html>
