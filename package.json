@@ -31,8 +31,12 @@
     "cli"
   ],
   "license": "MIT",
+  "homepage": "https://iamtyroon.github.io/commitcard/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/commitcard.git"
+    "url": "git+https://github.com/iamtyroon/commitcard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/iamtyroon/commitcard/issues"
   }
 }

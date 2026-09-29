@@ -68,7 +68,6 @@ const esc = (s) =>
   )
 
 const num = (v) => (Number.isFinite(v) && v !== 0 ? Math.round(v).toLocaleString('en-US') : '0')
-const signed = (v, sign) => (v ? `${sign}${num(v)}` : '0')
 
 const bars = (fill) =>
   fill

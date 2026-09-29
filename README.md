@@ -8,6 +8,16 @@ output, deleting generated files) are detected and shown separately so your real
 
 ![example](docs/example.png)
 
+## Try it in the browser
+
+**[iamtyroon.github.io/commitcard](https://iamtyroon.github.io/commitcard)**
+
+Type a public `owner/name`, pick a range, and download the PNG. The web version renders in your
+browser and runs entirely client-side — nothing is uploaded.
+
+> Browser limits: the public GitHub API allows 60 requests/hour per IP, and the page analyses at
+> most 30 commits. For private repos, local git, and unlimited ranges, use the CLI below.
+
 ## Quick start
 
 ```bash
