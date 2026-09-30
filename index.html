@@ -337,7 +337,7 @@
       <div id="signedOut" class="signedout">
         <span style="font-size:13px;color:var(--fg-muted)">Sign in to use private repos and pick from your repositories.</span>
       </div>
-      <button class="btn" id="signin" type="button">Sign in with GitHub</button>
+      <button class="btn secondary" id="signin" type="button">Sign in with GitHub</button>
       <button class="btn subtle" id="signout" type="button" hidden>Sign out</button>
       <button class="btn secondary" id="useToken" type="button">Use a token</button>
     </div>
@@ -481,7 +481,11 @@ const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4a4 4 0 0 
 // Device flow needs no client secret, so a client_id is safe to embed in a public page.
 // Create a free OAuth App at github.com/settings/developers and paste its client_id here
 // to enable one-click sign-in. Leave it as '' to use the personal-token flow only.
-const GITHUB_CLIENT_ID = 'Ov23lik7eLGtLOBBcvIC'
+// GitHub OAuth App client_id (public — device flow needs no secret).
+// NOTE: github.com/login/* sends no CORS headers, so a static page cannot call
+// these endpoints from the browser. The id is kept for a future same-origin
+// backend; until then the token flow below is the way to sign in.
+const GITHUB_CLIENT_ID = ''
 
 // Auth state. The token lives in memory + sessionStorage only: cleared when the tab
 // closes, never written to disk, and only ever sent to api.github.com.
@@ -714,7 +718,12 @@ async function deviceSignIn() {
     pollTimer = setInterval(poll, (d.interval || 5) * 1000)
   } catch {
     $('tokrow').classList.add('show')
-    status('err', 'Could not start GitHub sign-in. Paste a token instead.')
+    // GitHub's OAuth endpoints (github.com/login/*) send no CORS headers, so a
+    // static page cannot call them directly — this is a GitHub limitation, not
+    // a misconfiguration. Say so plainly and point at the token that works.
+    status('err', "GitHub doesn't allow browser apps to start OAuth sign-in directly. Use a token below instead.")
+    $('tokrow').classList.add('show')
+    $('token').focus()
   }
 }
 

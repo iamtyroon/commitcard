@@ -22,6 +22,10 @@ Two frontends, one card renderer:
 Pick a repository, a range, and a size, then download the PNG. It runs entirely client-side —
 nothing is uploaded. Sign in to unlock private repositories and pick from your own repos.
 
+Sign-in uses a GitHub personal access token (`repo` scope). The **Sign in with GitHub** button is
+not available: GitHub's OAuth endpoints send no CORS headers, so a static page cannot call them
+from the browser. It would need a small backend of your own to proxy the exchange.
+
 | | Signed out | Signed in |
 |---|---|---|
 | Repositories | public only | public **and private** |
