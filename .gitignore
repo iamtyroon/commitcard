@@ -5,3 +5,5 @@ out/
 commitcard-*.png
 .impeccable/
 out/
+
+.mailmap
