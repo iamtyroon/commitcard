@@ -2,7 +2,7 @@
 
 Turn a day or a week of commits into a clean image for Twitter/X, LinkedIn, or a blog post.
 
-![a commitcard for this repo's own last 30 days](docs/example.png)
+![a commitcard for this repo's own last 30 days](docs/example-light.png)
 
 `commitcard` reads your commit history, computes the stats exactly the way GitHub does, and
 renders a card sized for social. It also handles the noise: large mechanical commits — untracking
@@ -37,14 +37,24 @@ Requires Node.js 18+ and a Chromium/Chrome/Edge binary (found automatically, inc
 Playwright's cached Chromium).
 
 ~~~bash
+npx commitcard --repo iamtyroon/commitcard 30d
+~~~
+
+That runs it without installing anything and writes `commitcard-<date>.png` in the current
+directory. To install it as a command:
+
+~~~bash
+npm install -g commitcard
+commitcard --repo owner/name today
+~~~
+
+Or run it from a clone:
+
+~~~bash
 git clone https://github.com/iamtyroon/commitcard.git
 cd commitcard
 node bin/commitcard.mjs --repo iamtyroon/commitcard 30d
 ~~~
-
-That writes `commitcard-<date>.png` in the current directory.
-
-> Not published to npm yet — run it from a clone as above, or use the web app.
 
 ~~~bash
 # today's commits for a repo (uses gh if logged in, else the public API)
