@@ -148,7 +148,7 @@ export function renderCard(opts) {
         showBulkTag && isBulk(c) ? '<span class="tag">bulk</span>' : ''
       }</td>
       <td class="n">${num(c.files)}</td>
-      <td class="n add">+${num(c.additions)}</td>
+    <td class="n add">${c.additions ? `+${num(c.additions)}` : '0'}</td>
       <td class="n del">${c.deletions ? `-${num(c.deletions)}` : '0'}</td>
     </tr>`
 

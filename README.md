@@ -1,50 +1,74 @@
 # commitcard
 
-Turn a day (or week) of commits into a clean, shareable image for Twitter/X, LinkedIn, or a blog post.
+Turn a day or a week of commits into a clean image for Twitter/X, LinkedIn, or a blog post.
 
-`commitcard` reads your commit history, computes the stats the way GitHub does, and renders a
-GitHub-style card sized for social. It handles the noise: large "bulk" commits (untracking build
-output, deleting generated files) are detected and shown separately so your real work isn't drowned out.
+![a commitcard for this repo's own last 30 days](docs/example.png)
 
-![example](docs/example.png)
+`commitcard` reads your commit history, computes the stats exactly the way GitHub does, and
+renders a card sized for social. It also handles the noise: large mechanical commits — untracking
+build output, deleting generated files — are detected and shown separately, so a cleanup commit
+never makes your real work look bigger than it was.
 
-## Try it in the browser
+Two frontends, one card renderer:
+
+- **[Try it in the browser](https://iamtyroon.github.io/commitcard)** — type a repo, download the
+  PNG. Nothing to install.
+- **The CLI** — the full-power path. Private repos, local git, and large ranges.
+
+## The web app
 
 **[iamtyroon.github.io/commitcard](https://iamtyroon.github.io/commitcard)**
 
-Type a public `owner/name`, pick a range, and download the PNG. The web version renders in your
-browser and runs entirely client-side — nothing is uploaded.
+Pick a repository, a range, and a size, then download the PNG. It runs entirely client-side —
+nothing is uploaded. Sign in to unlock private repositories and pick from your own repos.
 
-> Browser limits: the public GitHub API allows 60 requests/hour per IP, and the page analyses at
-> most 30 commits. For private repos, local git, and unlimited ranges, use the CLI below.
+| | Signed out | Signed in |
+|---|---|---|
+| Repositories | public only | public **and private** |
+| Commits analysed | 30 | 200 |
+| API rate limit | 60 / hour per IP | 5,000 / hour |
 
-## Quick start
+The token lives in that tab only (memory + `sessionStorage`), is sent nowhere except
+`api.github.com`, and disappears when you close the tab.
 
-```bash
-# today's commits for a GitHub repo (uses gh if logged in, else the public API)
-npx commitcard --repo iamtyroon/Procureline today
+## The CLI
 
-# this week, with your handle and a title
-npx commitcard --repo vercel/next.js week --handle @you --title "My week in code"
-```
+Requires Node.js 18+ and a Chromium/Chrome/Edge binary (found automatically, including
+Playwright's cached Chromium).
 
-No install needed to try it — `npx commitcard ...` runs it directly. To install globally:
+~~~bash
+git clone https://github.com/iamtyroon/commitcard.git
+cd commitcard
+node bin/commitcard.mjs --repo iamtyroon/commitcard 30d
+~~~
 
-```bash
-npm install -g commitcard
-commitcard --repo owner/name today
-```
+That writes `commitcard-<date>.png` in the current directory.
+
+> Not published to npm yet — run it from a clone as above, or use the web app.
+
+~~~bash
+# today's commits for a repo (uses gh if logged in, else the public API)
+node bin/commitcard.mjs --repo iamtyroon/Procureline today --tz 3
+
+# this week, with a title and your handle
+node bin/commitcard.mjs --repo vercel/next.js week --handle @you --title "My week in code"
+
+# from a local checkout — no network, works on any repo
+node bin/commitcard.mjs --cwd . week --tz 3
+~~~
 
 ## Where the data comes from
 
-- **GitHub** (`--repo owner/name`) — the default. Uses the `gh` CLI when available (so **private repos work**),
-  otherwise the public GitHub API (set `GITHUB_TOKEN` to raise the rate limit).
-- **Local git** (`--cwd .`) — reads the git history in a directory. No network, works offline, works on
-  any repo (even non-GitHub).
+- **GitHub** (`--repo owner/name`) — uses the `gh` CLI when installed, so **private repos work**.
+  Otherwise the public API (set `GITHUB_TOKEN` to raise the rate limit).
+- **Local git** (`--cwd .`) — reads a directory's history. No network, works offline, any repo.
+
+GitHub history is paginated, so multi-day ranges are exact rather than stopping at 100 commits.
+Capped by `--max-commits` (default 1000); when the cap is hit the card says so.
 
 ## Ranges
 
-The range token is the first positional argument (or `--range`):
+The range is the first positional argument, or `--range`:
 
 | Token | Meaning |
 |---|---|
@@ -55,9 +79,9 @@ The range token is the first positional argument (or `--range`):
 | `month` | current calendar month |
 | `all` | entire history |
 
-Or pin exact dates: `--from 2026-09-01 --to 2026-09-29`, or a single day with `--date 2026-09-29`.
+Or pin exact dates with `--from 2026-09-01 --to 2026-09-29`, or one day with `--date 2026-09-29`.
 
-## Presets (image size)
+## Presets
 
 | Preset | Size | Best for |
 |---|---|---|
@@ -67,73 +91,56 @@ Or pin exact dates: `--from 2026-09-01 --to 2026-09-29`, or a single day with `-
 | `og` | 1200×630 | Open Graph / blog previews |
 | `github` | auto | README / issue comments (sized to content) |
 
-## Themes
-
-`dark` (default), `light`, `midnight`.
-
-## Common examples
-
-```bash
-# square post, light theme, your avatar and handle
-commitcard --repo owner/name today --preset twitter-square --theme light \
-  --handle @you --avatar https://github.com/you.png
-
-# week-in-review with the per-day histogram
-commitcard --repo owner/name week --tz 3 --title "Week in review" --label "Sep 22 – 29"
-
-# from a local checkout, no network
-commitcard --cwd . week --tz 3
-
-# just the numbers, as JSON (no image)
-commitcard --repo owner/name today --json
-```
+Themes: `dark` (default), `light`, `midnight`.
 
 ## Options
 
-```
+~~~text
 --repo owner/name   GitHub repo to read
---branch <name>     branch (default: repo default branch)
+--branch <name>     branch (default: the repo's default branch)
 --cwd <dir>         read local git history instead
 --api gh|http       force the API backend
---tz <hours>        timezone offset for "today" and times (e.g. 3 for Nairobi)
+--tz <hours>        timezone offset for "today" and for times (e.g. 3)
 
 --preset twitter|twitter-square|x-header|og|github
 --theme dark|light|midnight
---title <text>      headline (defaults to repo name)
+--title <text>      headline (defaults to the repo name)
 --subtitle <text>   small line under the title
 --label <text>      footer label (e.g. "Week of Sep 22")
 --handle <text>     top-right handle (defaults to @owner)
 --avatar <url>      avatar image (defaults to the repo owner's)
 --note <text>       replace the default footer note
 --max-rows <n>      commits listed (default 8)
---max-commits <n>   cap on commits analysed (default 1000); card says if it hits the cap
+--max-commits <n>   cap on commits analysed (default 1000)
 --no-bulk-tag       hide the "bulk" badge
 
 --out <path>        output PNG (default ./commitcard-<date>.png)
 --scale <n>         device scale (default 2)
 --json              print stats as JSON, no image
 --open              open the PNG when done
-```
+~~~
 
-## How "bulk" detection works
+## How bulk detection works
 
-A commit is treated as **bulk** when it removes a lot and adds almost nothing *and* reads like
-maintenance (`chore`, `remove`, `untrack`, `revert`, ...). Bulk commits get a `bulk` badge and are
-excluded from the "source only" totals, so the headline shows both the raw diff and the signal.
+A commit counts as **bulk** when it deletes a lot, adds almost nothing, *and* reads like
+maintenance (`chore`, `remove`, `untrack`, `revert`, …). Those commits get a `bulk` badge and are
+left out of the "source only" row, so the card shows both the raw diff and the real signal.
+
+## Development
+
+~~~bash
+npm test
+node bin/commitcard.mjs --repo owner/name today --tz 3
+~~~
+
+The web app (`index.html`) and the CLI share `src/render.mjs` and `src/aggregate.mjs`, so a card
+looks the same either way. `DESIGN.md` documents the visual system; `PRODUCT.md` the product rules.
 
 ## Requirements
 
 - Node.js 18+
-- A Chromium/Chrome/Edge binary for rendering. `commitcard` finds a normal install automatically
-  (including Playwright's cached Chromium). Override with `COMMITCARD_BROWSER=/path/to/chrome`.
-- For private GitHub repos: `gh auth login`, or `GITHUB_TOKEN`.
-
-## Development
-
-```bash
-npm test          # unit tests for the aggregation logic
-node bin/commitcard.mjs --repo owner/name today --tz 3   # local run
-```
+- A Chromium/Chrome/Edge binary for rendering — override discovery with `COMMITCARD_BROWSER`
+- For private GitHub repos: `gh auth login`, or `GITHUB_TOKEN`
 
 ## License
 

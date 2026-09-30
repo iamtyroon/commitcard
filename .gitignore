@@ -7,3 +7,4 @@ commitcard-*.png
 out/
 
 .mailmap
+fix.tmp
