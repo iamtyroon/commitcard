@@ -170,11 +170,6 @@
   .auth .btn{margin:0;flex:0 0 auto}
  .authrow .btn{margin-left:auto}
  .authrow .btn + .btn{margin-left:0}
- .device{display:none;margin-top:12px;border:1px solid var(--border-default);border-radius:6px;
-   padding:12px 14px;background:var(--canvas-default)}
- .device.show{display:block}
- .code{font:600 24px/1.3 var(--mono);letter-spacing:.2em;color:var(--accent-fg);
-   user-select:all;margin:6px 0 8px}
  .tokrow{display:none;margin-top:12px;gap:8px}
   .tokrow.show{display:flex}
   .tokrow input{flex:1}
@@ -343,13 +338,6 @@
       <button class="btn secondary" id="useToken" type="button">Use a token</button>
     </div>
 
-    <div class="device" id="device">
-      <div style="font-size:13px">Open <a id="devUrl" href="#" target="_blank" rel="noopener">github.com/login/device</a>
-        and enter this code:</div>
-      <div class="code" id="devCode">········</div>
-      <div style="font-size:12px;color:var(--fg-muted)" id="devHint">Waiting for authorisation…</div>
-    </div>
-
     <div class="tokrow" id="tokrow">
       <input id="token" type="password" spellcheck="false" autocomplete="off"
              placeholder="Paste a personal access token (repo scope)">
@@ -418,7 +406,8 @@
           <svg class="btnicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.79 2.5a.75.75 0 0 1 .5.75v6.5a.75.75 0 0 1-1.28.53l-2.5-2.22a.75.75 0 0 1 0-1.06L4.78 6.25H3.75A1.75 1.75 0 0 1 2 4.5v-.63a.75.75 0 0 1 .75-.75h1.03a.75.75 0 0 1 .5.19l2.51-.08Z"/></svg>
           Generate card
         </button>
-        <button class="btn secondary" id="dl" type="button" style="width:100%;margin-top:8px" disabled>Download PNG</button>
+      <button class="btn secondary" id="dl" type="button" style="width:100%;margin-top:8px" disabled>Download PNG</button>
+      <button class="btn secondary" id="copyPng" type="button" style="width:100%;margin-top:8px" disabled>Copy PNG</button>
       </div>
     </form>
 
@@ -489,6 +478,12 @@ const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4a4 4 0 0 
 // backend; until then the token flow below is the way to sign in.
 const GITHUB_CLIENT_ID = ''
 
+// Optional OAuth broker. When deployed, the worker owns the client_secret and keeps
+// the token in an httpOnly cookie the page cannot read; github.com's own OAuth
+// endpoints send no CORS headers, so a static page can never do this exchange itself.
+// Leave '' to use the personal-token flow only.
+const API_BASE = ''
+
 // Auth state. The token lives in memory + sessionStorage only: cleared when the tab
 // closes, never written to disk, and only ever sent to api.github.com.
 let token = sessionStorage.getItem('commitcard:token') || ''
@@ -540,6 +535,17 @@ function resolveRange(range, tz) {
 }
 
 async function api(path) {
+  // When the broker is configured, GitHub calls go through it. The token never
+  // enters this page: the worker reads it from the cookie and forwards only the
+  // API response, so the browser sees plain JSON like the direct path does.
+  if (API_BASE) {
+    const res = await fetch(API_BASE + '/api/gh?gh=' + encodeURIComponent(path), {
+      credentials: 'include',
+    })
+    if (res.status === 401) throw new Error('Your GitHub session expired. Sign in again.')
+    if (!res.ok) throw new Error('GitHub API error ' + res.status)
+    return res.json()
+  }
   const res = await fetch('https://api.github.com/' + path, { headers: authHeaders() })
   if (res.status === 403 || res.status === 429) {
     throw new Error(token
@@ -671,6 +677,12 @@ function renderPicker(filter) {
 }
 
 async function signOut() {
+  if (API_BASE) {
+    // Clear the httpOnly cookie server-side; the page cannot do it itself.
+    try {
+      await fetch(API_BASE + '/api/session', { method: 'DELETE', credentials: 'include' })
+    } catch {}
+  }
   setToken('')
   viewer = null
   myRepos = []
@@ -706,56 +718,18 @@ async function useToken(raw) {
   }
 }
 
-// Device flow — no secret required, but needs a registered OAuth App client_id.
-let pollTimer = null
+// Sign in via the broker. It holds the client_secret, so this is a plain navigation
+// and the token never reaches the page. Without a broker, fall back to the token box
+// and say why rather than failing silently.
 async function deviceSignIn() {
-  if (!GITHUB_CLIENT_ID) {
+  if (!API_BASE) {
     $('tokrow').classList.add('show')
-    status('err', 'One-click sign-in needs an OAuth App client_id. Paste a token instead (repo scope).')
+    status('err', 'One-click sign-in needs the OAuth worker deployed. Paste a token instead (repo scope).')
+    $('token').focus()
     return
   }
-  try {
-    const res = await fetch('https://github.com/login/device/code?client_id=' + GITHUB_CLIENT_ID + '&scope=repo', {
-      method: 'POST',
-      headers: { accept: 'application/json' },
-    })
-    const d = await res.json()
-    if (!d.device_code) throw new Error(d.error || 'could not start sign-in')
-    $('device').classList.add('show')
-    $('devCode').textContent = d.user_code
-    $('devUrl').href = d.verification_uri
-    $('devHint').textContent = 'Waiting for you to authorise on GitHub…'
-    const poll = async () => {
-      const p = await fetch(
-        'https://github.com/login/oauth/access_token?client_id=' + GITHUB_CLIENT_ID +
-        '&device_code=' + d.device_code + '&grant_type=urn:ietf:params:oauth:grant-type:device_code',
-        { method: 'POST', headers: { accept: 'application/json' } },
-      )
-      const r = await p.json()
-      if (r.access_token) {
-        clearInterval(pollTimer)
-        $('device').classList.remove('show')
-        await useToken(r.access_token)
-        return
-      }
-      if (r.error === 'slow_down') return
-      if (r.error && r.error !== 'authorization_pending') {
-        clearInterval(pollTimer)
-        $('device').classList.remove('show')
-        status('err', 'Sign-in failed: ' + r.error)
-      }
-    }
-    clearInterval(pollTimer)
-    pollTimer = setInterval(poll, (d.interval || 5) * 1000)
-  } catch {
-    $('tokrow').classList.add('show')
-    // GitHub's OAuth endpoints (github.com/login/*) send no CORS headers, so a
-    // static page cannot call them directly — this is a GitHub limitation, not
-    // a misconfiguration. Say so plainly and point at the token that works.
-    status('err', "GitHub doesn't allow browser apps to start OAuth sign-in directly. Use a token below instead.")
-    $('tokrow').classList.add('show')
-    $('token').focus()
-  }
+  // Full-page navigation: the worker redirects to GitHub and back with ?signedin=1.
+  location.href = API_BASE + '/api/login'
 }
 
 let lastHtml = null
@@ -825,6 +799,7 @@ async function generate() {
   $('go').disabled = true
   $('dl').disabled = true
   $('copy').disabled = true
+  $('copyPng').disabled = true
   status('busy', 'Reading ' + repo + '…')
 
   try {
@@ -879,6 +854,7 @@ async function generate() {
       showRepo: isOwner,
     })
     lastHtml = html
+    lastBlob = null // new card -> the cached PNG no longer matches
     paint(html, true)
     showStats(commits)
 
@@ -888,6 +864,7 @@ async function generate() {
       (typedHandle ? ' --handle "' + typedHandle + '"' : '')
     $('copy').disabled = false
     $('dl').disabled = false
+    $('copyPng').disabled = false
 
     const sum = summarise(commits)
     const repoCount = new Set(commits.map((c) => c.repo)).size
@@ -902,65 +879,132 @@ async function generate() {
   }
 }
 
+// Rasterise the live card to a PNG blob. Shared by Download and Copy PNG so both
+// produce byte-identical output. Cached because rendering is the expensive part.
+let lastBlob = null
+
+async function renderPngBlob() {
+  if (lastBlob) return lastBlob
+  const doc = $('frame').contentDocument
+  const wrap = doc.querySelector('.wrap')
+  const style = lastHtml.match(/<style>([\s\S]*?)<\/style>/)[1]
+  const w = lastCard.w
+  const h = lastCard.h
+  const scale = 2
+
+  // Inline remote images: an SVG <foreignObject> cannot load them once rasterised.
+  const clone = wrap.cloneNode(true)
+  for (const img of clone.querySelectorAll('img')) {
+    try {
+      const blob = await (await fetch(img.src)).blob()
+      img.src = await new Promise((res) => {
+        const fr = new FileReader()
+        fr.onload = () => res(fr.result)
+        fr.readAsDataURL(blob)
+      })
+    } catch { img.remove() }
+  }
+  const inner =
+    '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + w + 'px;height:' + h + 'px">' +
+    '<style>' + style + '</style>' + clone.outerHTML + '</div>'
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
+    '<foreignObject width="100%" height="100%">' + inner + '</foreignObject></svg>'
+  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  const img = new Image()
+  await new Promise((res, rej) => {
+    img.onload = res
+    img.onerror = () => rej(new Error('render failed'))
+    img.src = url
+  })
+  const canvas = document.createElement('canvas')
+  canvas.width = w * scale
+  canvas.height = h * scale
+  const ctx = canvas.getContext('2d')
+  ctx.scale(scale, scale)
+  ctx.drawImage(img, 0, 0)
+  lastBlob = await new Promise((r) => canvas.toBlob(r, 'image/png'))
+  return lastBlob
+}
+
+function pngName() {
+  return 'commitcard-' + $('repo').value.trim().replace(/[\/\s]/g, '-') + '.png'
+}
+
 async function download() {
   if (!lastCard) return
   $('dl').disabled = true
   const prev = $('dl').textContent
   $('dl').textContent = 'Rendering…'
   try {
-    const doc = $('frame').contentDocument
-    const wrap = doc.querySelector('.wrap')
-    const style = lastHtml.match(/<style>([\s\S]*?)<\/style>/)[1]
-    const w = lastCard.w
-    const h = lastCard.h
-    const scale = 2
-
-    const clone = wrap.cloneNode(true)
-    for (const img of clone.querySelectorAll('img')) {
-      try {
-        const blob = await (await fetch(img.src)).blob()
-        img.src = await new Promise((res) => {
-          const fr = new FileReader()
-          fr.onload = () => res(fr.result)
-          fr.readAsDataURL(blob)
-        })
-      } catch { img.remove() }
-    }
-    const inner =
-      '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + w + 'px;height:' + h + 'px">' +
-      '<style>' + style + '</style>' + clone.outerHTML + '</div>'
-    const svg =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
-      '<foreignObject width="100%" height="100%">' + inner + '</foreignObject></svg>'
-    const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
-    const img = new Image()
-    await new Promise((res, rej) => {
-      img.onload = res
-      img.onerror = () => rej(new Error('render failed'))
-      img.src = url
-    })
-    const canvas = document.createElement('canvas')
-    canvas.width = w * scale
-    canvas.height = h * scale
-    const ctx = canvas.getContext('2d')
-    ctx.scale(scale, scale)
-    ctx.drawImage(img, 0, 0)
-    const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'))
+    const blob = await renderPngBlob()
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = 'commitcard-' + $('repo').value.trim().replace(/[\/\s]/g, '-') + '.png'
+    a.download = pngName()
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 4000)
   } catch {
-    alert('Could not build the PNG in this browser.\n\nWorkaround: right-click the preview and choose "Save image as", or use the CLI:\n\n' + $('cmd').textContent)
+    status('err', 'Could not build the PNG here. Right-click the preview and choose "Save image as", or use the CLI: ' + $('cmd').textContent)
   } finally {
     $('dl').textContent = prev
     $('dl').disabled = false
   }
 }
 
+// Copy the PNG itself to the clipboard, so it can be pasted straight into X/LinkedIn.
+// ClipboardItem image/png is Chromium-only; the execCommand path is the fallback
+// for Firefox and Safari, which cannot write an image blob at all.
+async function copyPng() {
+  if (!lastCard) return
+  const btn = $('copyPng')
+  btn.disabled = true
+  const prev = btn.textContent
+  btn.textContent = 'Rendering…'
+  try {
+    const blob = await renderPngBlob()
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      } catch (e) {
+        // Name the cause. "It failed" is useless when the fix differs between an
+        // insecure context, a denied permission and a missing API.
+        throw new Error(
+          (e && e.name) + ': ' + (e && e.message) +
+            ' [secure=' + window.isSecureContext +
+            ' write=' + !!(navigator.clipboard && navigator.clipboard.write) +
+            ' focus=' + document.hasFocus() + ']',
+        )
+      }
+      btn.textContent = 'Copied!'
+    } else {
+      const url = URL.createObjectURL(blob)
+      const img = document.createElement('img')
+      img.src = url
+      await img.decode()
+      const c = document.createElement('canvas')
+      c.width = img.naturalWidth
+      c.height = img.naturalHeight
+      c.getContext('2d').drawImage(img, 0, 0)
+      const data = c.toDataURL('image/png').split(',')[1]
+      const ok = document.execCommand('copy')
+      if (!ok) throw new Error('copy blocked')
+      btn.textContent = 'Copied!'
+      setTimeout(() => URL.revokeObjectURL(url), 4000)
+    }
+    setTimeout(() => (btn.textContent = prev), 1400)
+  } catch (e) {
+    btn.textContent = prev
+    // Inline rather than alert(): a modal blocks the page and reads as a crash.
+    status('err', 'Clipboard image failed — ' + ((e && e.message) || e) +
+      ' — use "Download PNG" and paste the file directly.')
+  } finally {
+    btn.disabled = false
+  }
+}
+
 $('form').addEventListener('submit', (e) => { e.preventDefault(); generate() })
 $('dl').addEventListener('click', download)
+$('copyPng').addEventListener('click', copyPng)
 $('themeToggle').addEventListener('click', () => {
   applyTheme(currentTheme() === 'light' ? 'dark' : 'light')
 })
@@ -987,7 +1031,17 @@ window.addEventListener('resize', () => { if (lastHtml) paint(lastHtml, false) }
 
 // Restore an existing session token (e.g. after a reload within the same tab).
 initTheme()
-if (token) {
+if (API_BASE) {
+  // The broker owns the session. Ask it who we are; it also restores after the
+  // OAuth round trip, which lands back here with ?signedin=1.
+  loadViewer()
+    .then(() => {
+      const back = new URLSearchParams(location.search).get('signedin')
+      if (back) history.replaceState(null, '', location.pathname)
+      status('ok', 'Signed in as @' + viewer.login + ' — private repos unlocked.')
+    })
+    .catch(() => status('', 'Sign in with GitHub to read private repositories.'))
+} else if (token) {
   loadViewer()
     .then(() => status('ok', 'Signed in as @' + viewer.login + ' — private repos unlocked.'))
     .catch(() => setToken(''))

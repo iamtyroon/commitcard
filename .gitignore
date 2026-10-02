@@ -1,4 +1,7 @@
 node_modules/
+.env
+.env.local
+.vercel/
 out/
 *.log
 .DS_Store
@@ -9,3 +12,4 @@ out/
 
 .mailmap
 fix.tmp
+.vercel

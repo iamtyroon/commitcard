@@ -22,9 +22,38 @@ Two frontends, one card renderer:
 Pick a repository, a range, and a size, then download the PNG. It runs entirely client-side —
 nothing is uploaded. Sign in to unlock private repositories and pick from your own repos.
 
-Sign-in uses a GitHub personal access token (`repo` scope). The **Sign in with GitHub** button is
-not available: GitHub's OAuth endpoints send no CORS headers, so a static page cannot call them
-from the browser. It would need a small backend of your own to proxy the exchange.
+Sign-in has two paths. **Sign in with GitHub** uses an OAuth broker (below) — the token stays in an
+httpOnly cookie and never reaches the page. Without a broker deployed, use **Use a token** with a
+personal access token (`repo` scope); it is kept in that tab only.
+
+### Why the button needs a server
+
+GitHub's OAuth endpoints send no `Access-Control-Allow-Origin` header, so a browser can never read
+the token exchange — the `OPTIONS` preflight 404s with no CORS headers while `api.github.com`
+answers `204` + `ACAO: *`. No `client_id` changes that. The exchange also needs your
+`client_secret`, so it has to run somewhere that isn't a browser tab.
+
+`api/[...path].js` is that piece, and it is deliberately small:
+
+| Route | Purpose |
+|---|---|
+| `GET /api/login` | starts OAuth, sets a `state` cookie |
+| `GET /api/callback` | verifies `state` (CSRF), exchanges the code, sets the token cookie |
+| `GET /api/session` | who am I; `DELETE` signs out |
+| `GET /api/gh?gh=<path>` | read-only proxy for `user`, `repos` and `search` |
+
+The token is never returned to the browser, the proxy refuses anything outside those prefixes, and
+a cross-site `Origin` is rejected. Deploy it anywhere serverless — it is plain Node with no
+dependencies:
+
+~~~bash
+npm i -g vercel && vercel login
+vercel            # deploy
+vercel env add GITHUB_CLIENT_ID production
+~~~
+
+Then set `API_BASE` near the top of `index.html` to the deployed origin. Left empty, the page uses
+the personal-token flow.
 
 | | Signed out | Signed in |
 |---|---|---|
