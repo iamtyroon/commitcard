@@ -178,8 +178,11 @@ async function proxy(req, res) {
 }
 
 export default async function handler(req, res) {
-  const seg = req.query?.path
-  const route = (Array.isArray(seg) ? seg[0] : seg) || ''
+  // Vercel did not route a catch-all filename ([...path].js), so every route is
+  // rewritten here to /api/oauth and the real route is read from the URL. This is
+  // the path Vercel actually preserved; `req.query.path` is empty after a rewrite.
+  const url = String(req.url || '')
+  const route = (url.split('?')[0].split('/').filter(Boolean)[1] || '').toLowerCase()
   try {
     if (req.method === 'OPTIONS') {
       if (!allowOrigin(req, res)) return res.status(403).end()
@@ -187,7 +190,7 @@ export default async function handler(req, res) {
     }
     // Credentialed CORS only where it is needed; /api/login and /api/callback are
     // plain navigations.
-    if (route === 'gh' || route === 'session') {
+  if (route === 'gh' || route === 'session') {
       const allowed = allowOrigin(req, res)
       // A present-but-wrong Origin is rejected. An absent one is fine (see
       // allowOrigin) and must not be, or sign-out breaks.

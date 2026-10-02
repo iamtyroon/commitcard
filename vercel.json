@@ -1,16 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": null,
-  "outputDirectory": ".",
-  "cleanUrls": true,
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-store" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "no-referrer" }
-      ]
-    }
+  "rewrites": [
+    { "source": "/api/login", "destination": "/api/oauth" },
+    { "source": "/api/callback", "destination": "/api/oauth" },
+    { "source": "/api/session", "destination": "/api/oauth" },
+    { "source": "/api/gh", "destination": "/api/oauth" }
   ]
 }
