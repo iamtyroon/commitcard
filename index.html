@@ -482,7 +482,7 @@ const GITHUB_CLIENT_ID = ''
 // the token in an httpOnly cookie the page cannot read; github.com's own OAuth
 // endpoints send no CORS headers, so a static page can never do this exchange itself.
 // Leave '' to use the personal-token flow only.
-const API_BASE = ''
+const API_BASE = 'https://commitcard-gray.vercel.app'
 
 // Auth state. The token lives in memory + sessionStorage only: cleared when the tab
 // closes, never written to disk, and only ever sent to api.github.com.

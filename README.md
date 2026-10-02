@@ -33,7 +33,9 @@ the token exchange — the `OPTIONS` preflight 404s with no CORS headers while `
 answers `204` + `ACAO: *`. No `client_id` changes that. The exchange also needs your
 `client_secret`, so it has to run somewhere that isn't a browser tab.
 
-`api/[...path].js` is that piece, and it is deliberately small:
+`api/oauth.js` is that piece, and it is deliberately small. Every route is
+rewritten to it from `vercel.json`, because Vercel does not route a
+`[...path].js` catch-all reliably — the plain filename is what answers:
 
 | Route | Purpose |
 |---|---|
