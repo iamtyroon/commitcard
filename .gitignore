@@ -4,6 +4,7 @@ out/
 .DS_Store
 commitcard-*.png
 .impeccable/
+.codegraph/
 out/
 
 .mailmap

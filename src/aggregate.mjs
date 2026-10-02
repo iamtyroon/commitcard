@@ -9,6 +9,12 @@ export function isBulk(c) {
   return c.deletions > 500 && c.additions / c.deletions < 0.1 && BULK_MSG.test(c.subject)
 }
 
+// Automation commits (Actions, Dependabot, CI accounts) land in a range and are
+// reachable, but they are not the account holder's work. Callers default them out.
+export function isBot(c) {
+  return /\[bot\]$/i.test(c.authorLogin ?? '') || /\bbot\b/i.test(c.author ?? '')
+}
+
 export function totals(commits) {
   return {
     commits: commits.length,

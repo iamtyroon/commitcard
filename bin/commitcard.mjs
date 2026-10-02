@@ -3,7 +3,7 @@ import { join, resolve, basename } from 'node:path'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { renderCard, PRESETS, THEMES } from '../src/render.mjs'
-import { collectFromGitHub, collectFromLocalGit, which } from '../src/fetch.mjs'
+import { collectFromGitHub, collectAcrossRepos, collectFromLocalGit, which } from '../src/fetch.mjs'
 import { screenshot } from '../src/chrome.mjs'
 import { summarise, dailySeries } from '../src/aggregate.mjs'
 
@@ -64,7 +64,7 @@ function parseArgs(argv) {
     if (k === 'maxRows' || k === 'maxCommits' || k === 'tz' || k === 'scale') v = Number(v)
     out[k] = v
   }
-  for (const b of ['open', 'json', 'help', 'no-bulk-tag', 'list-themes'])
+  for (const b of ['open', 'json', 'help', 'no-bulk-tag', 'list-themes', 'include-bots'])
     out[b] = argv.includes(`--${b}`)
   return out
 }
@@ -73,6 +73,7 @@ const HELP = `commitcard — a shareable GitHub-style commit-stats card
 
 Usage:
   commitcard --repo owner/name [range] [options]
+  commitcard --repo <login>   [range] [options]   # every repo you can reach
   commitcard --cwd . [options]            # read local git history (no network)
 
 Ranges (default: today, in --tz timezone):
@@ -82,9 +83,13 @@ Ranges (default: today, in --tz timezone):
 
 Source:
   --repo owner/name   GitHub repo (uses gh CLI if installed, else public API)
+  --repo <login>      a bare login scans EVERY repo you can read, public and
+                      private, and pools the commits. Needs a signed-in session
+                      (gh auth login / GITHUB_TOKEN) because it reads private repos.
   --branch <name>     branch to read (default: repo default branch)
   --cwd <dir>         read local git history instead of GitHub
   --api gh|http       force the API backend
+  --include-bots      count automation commits (Actions/Dependabot) too
 
 Card:
   --preset twitter|twitter-square|x-header|og|github   (default: twitter)
@@ -107,12 +112,16 @@ Output:
   --open           open the PNG after rendering
 
 Examples:
+  commitcard --repo iamtyroon week --tz 3
   commitcard --repo iamtyroon/Procureline today --tz 3 --handle @iamtyroon
   commitcard --repo vercel/next.js week --preset twitter --theme light
   commitcard --cwd . week --tz 3 --title "My week in code"
 `
 
 // Resolve [from,to] epoch ms for a range token in a given tz offset.
+// A bare login with no "/" is an account, not a repo -> cross-repo mode.
+const isOwnerOnly = (v) => typeof v === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9-]*)$/.test(v.trim())
+
 function resolveRange(opts) {
   const tz = opts.tz ?? 0
   const now = Date.now()
@@ -197,6 +206,18 @@ async function main() {
   let data
   if (useLocal) {
     data = await collectFromLocalGit({ cwd: resolve(opts.cwd), from, to })
+  } else if (isOwnerOnly(opts.repo)) {
+    // A bare login ("iamtyroon") means "every repo I can reach", not a repo path.
+    data = await collectAcrossRepos({
+      owner: opts.repo,
+      from,
+      to,
+      api: opts.api ?? '',
+      maxCommits: opts.maxCommits,
+      includeBots: opts.includeBots,
+      onProgress: (d, t) => process.stderr.write(`\rfetched ${d}/${t} commits`),
+    })
+    process.stderr.write('\n')
   } else {
     data = await collectFromGitHub({
       repo: opts.repo,
@@ -248,6 +269,7 @@ async function main() {
     preset,
     maxRows: opts.maxRows,
     showBulkTag: !opts['no-bulk-tag'],
+    showRepo: isOwnerOnly(opts.repo),
     truncated: Boolean(data.truncated),
   })
 

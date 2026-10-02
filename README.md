@@ -71,6 +71,27 @@ node bin/commitcard.mjs --repo vercel/next.js week --handle @you --title "My wee
 node bin/commitcard.mjs --cwd . week --tz 3
 ~~~
 
+## All your repos, one card
+
+Pass a bare login instead of `owner/name` and the card pools every repository you
+can reach — public *and* private — into a single set of totals:
+
+~~~bash
+npx commitcard --repo iamtyroon week
+~~~
+
+This needs a signed-in session, because private repos are only readable with your
+credentials: `gh auth login`, or `GITHUB_TOKEN`. Each row is tagged with the repo it
+came from (`commitcard@cfc5c35`), and the header badge shows how many repos were
+pooled. Automation commits (Actions, Dependabot) are excluded by default; pass
+`--include-bots` to count them.
+
+Why not `search/commits`? That endpoint filters on `author:<login>`, so it drops any
+commit authored under a different git identity — an agent email, a work machine, a
+`.mailmap` alias. In practice that silently hides real work. `commitcard` enumerates
+your repos and reads each one's history, so the total is the sum of what you can
+actually see.
+
 ## Where the data comes from
 
 - **GitHub** (`--repo owner/name`) — uses the `gh` CLI when installed, so **private repos work**.
@@ -111,10 +132,12 @@ Themes: `dark` (default), `light`, `midnight`.
 
 ~~~text
 --repo owner/name   GitHub repo to read
+--repo <login>      a bare login scans every repo you can read (see above)
 --branch <name>     branch (default: the repo's default branch)
 --cwd <dir>         read local git history instead
 --api gh|http       force the API backend
 --tz <hours>        timezone offset for "today" and for times (e.g. 3)
+--include-bots      count automation commits (Actions/Dependabot)
 
 --preset twitter|twitter-square|x-header|og|github
 --theme dark|light|midnight

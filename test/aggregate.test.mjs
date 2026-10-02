@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isBulk, totals, summarise, meter, dailySeries } from '../src/aggregate.mjs'
+import { isBulk, isBot, totals, summarise, meter, dailySeries } from '../src/aggregate.mjs'
 
 const c = (o) => ({
   sha: 'x'.repeat(40),
@@ -33,6 +33,16 @@ test('totals sums files, adds, dels and unique paths', () => {
   assert.equal(t.additions, 8)
   assert.equal(t.deletions, 1)
   assert.equal(t.uniqueFiles, 3)
+})
+
+test('isBot catches automation accounts without flagging humans', () => {
+  assert.equal(isBot({ authorLogin: 'github-actions[bot]', author: 'github-actions[bot]' }), true)
+  assert.equal(isBot({ authorLogin: 'dependabot[bot]', author: 'dependabot[bot]' }), true)
+  assert.equal(isBot({ authorLogin: null, author: 'renovate bot' }), true)
+  // A human whose name merely contains "bot" as a word elsewhere is not filtered.
+  assert.equal(isBot({ authorLogin: 'iamtyroon', author: 'Tesfaalem Nahom' }), false)
+  // Missing identity must not throw or silently drop the commit.
+  assert.equal(isBot({ authorLogin: null, author: 'Codex' }), false)
 })
 
 test('summarise splits bulk from source-only focus totals', () => {

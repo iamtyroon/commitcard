@@ -99,6 +99,7 @@ export function renderCard(opts) {
     maxRows = 8,
     showBulkTag = true,
     truncated = false,
+    showRepo = false,
   } = opts
   const t = THEMES[theme] ?? THEMES.dark
   const p = PRESETS[preset] ?? PRESETS.github
@@ -108,6 +109,11 @@ export function renderCard(opts) {
   const focusBlocks = meter()(sum.focus.additions, sum.focus.deletions)
   const shown = commits.slice(0, maxRows)
   const hidden = commits.length - shown.length
+  // Cross-repo mode: name the repo inline, since a pooled card has no single one.
+  const repoOf = (c) => (c.repo ? String(c.repo).split('/').pop() : '')
+  const repoSpans = showRepo && new Set(shown.map(repoOf).filter(Boolean)).size > 1
+  const shortSha = (c) =>
+    repoSpans ? `${repoOf(c)}@${c.shortSha}` : c.shortSha
   const multiDay = new Set(commits.map((c) => new Date(c.committedAt + tz * 3600e3).toISOString().slice(0, 10))).size > 1
   const series = multiDay ? dailySeries(commits, tz) : null
   const maxDay = series ? Math.max(...series.map((d) => d.additions + d.deletions), 1) : 1
@@ -143,7 +149,7 @@ export function renderCard(opts) {
   const row = (c) => `
     <tr>
       <td class="t">${fmtTime(c.committedAt, tz)}</td>
-      <td class="sha">${esc(c.shortSha)}</td>
+      <td class="sha">${esc(shortSha(c))}</td>
       <td class="msg">${esc(c.subject)}${
         showBulkTag && isBulk(c) ? '<span class="tag">bulk</span>' : ''
       }</td>
@@ -221,7 +227,8 @@ export function renderCard(opts) {
   td{padding:9px 10px;border-bottom:1px solid var(--hair);height:${rowH}px;vertical-align:middle}
   th.r,td.n{text-align:right;width:86px}
   .t{color:var(--muted);font:12.5px ${t.mono};width:52px}
-  .sha{color:var(--accent);font:12.5px ${t.mono};width:78px}
+  .sha{color:var(--accent);font:12.5px ${t.mono};width:${repoSpans ? 168 : 78}px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .msg{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .tag{margin-left:8px;background:var(--accentBg);border:1px solid var(--accentBorder);
     color:var(--accent);border-radius:2em;padding:1px 8px;font:600 10px ${t.font};

@@ -191,7 +191,8 @@
   label{display:block;font-size:13px;font-weight:500;margin:0 0 6px;color:var(--fg-default)}
   .field{margin-bottom:16px}
   .field:last-child{margin-bottom:0}
-  .field .hint{font-size:12px;color:var(--fg-muted);margin-top:6px}
+.field .hint{font-size:12px;color:var(--fg-muted);margin-top:6px}
+  .field .hint code{background:var(--neutral-muted);border-radius:6px;padding:2px 5px;font:400 11.5px var(--mono)}
   input,select{width:100%;background:var(--canvas-default);color:var(--fg-default);
     border:1px solid var(--border-default);border-radius:6px;padding:5px 12px;
     font:400 14px/1.5 inherit;box-shadow:var(--btn-shadow);transition:border-color .1s ease,box-shadow .1s ease}
@@ -367,6 +368,7 @@
       <div class="field">
         <label for="repo">Repository</label>
         <input id="repo" value="iamtyroon/commitcard" spellcheck="false" autocomplete="off" placeholder="owner/name">
+        <div class="hint">Just a login (e.g. <code>iamtyroon</code>) pools every repo you can read, public and private. Needs a token.</div>
       </div>
 
       <div class="field" id="repoField" hidden>
@@ -552,6 +554,35 @@ async function api(path) {
 function status(kind, text) {
   $('dot').className = 'dot ' + (kind || '')
   $('status').textContent = text
+}
+
+// Pool the caller's commits across every repo they can read, public and private.
+// Repos are pre-filtered on pushed_at so an idle account costs one call each.
+async function commitsForOwner(cap, from, to) {
+  const repos = []
+  for (let page = 1; page <= 4; page++) {
+    const batch = await api(
+      'user/repos?affiliation=owner,collaborator,organization_member&sort=pushed&per_page=100&page=' + page,
+    )
+    repos.push(...batch)
+    if (batch.length < 100) break
+  }
+  const active = repos
+    .filter((r) => r.pushed_at && Date.parse(r.pushed_at) >= from)
+    .sort((a, b) => Date.parse(b.pushed_at) - Date.parse(a.pushed_at))
+  const out = []
+  for (const r of active) {
+    if (out.length >= cap) break
+    const list = await api(
+      'repos/' + r.full_name + '/commits?since=' + iso(from) + '&until=' + iso(to) + '&per_page=100',
+    )
+    if (!Array.isArray(list)) throw new Error('unexpected commit-list response')
+    for (const c of list) {
+      if (out.length >= cap) break
+      out.push({ ...c, repo: r.full_name })
+    }
+  }
+  return out
 }
 
 // ---- auth + repo picker ---------------------------------------------------
@@ -775,7 +806,16 @@ async function generate() {
   const repo = $('repo').value.trim()
     .replace(/^https?:\/\/github\.com\//, '')
     .replace(/\.git$/, '')
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { status('err', 'Use the form owner/name'); return }
+  // A bare login with no "/" means "pool every repo I can reach".
+  const isOwner = /^[\w.-]+$/.test(repo) && !repo.includes('/')
+  if (!isOwner && !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+    status('err', 'Use owner/name, or just a login to scan all your repos')
+    return
+  }
+  if (isOwner && !token) {
+    status('err', 'Scanning all your repos needs a token — private repos require one. Sign in above.')
+    return
+  }
 
   const range = $('range').value
   const preset = $('preset').value
@@ -789,18 +829,23 @@ async function generate() {
 
   try {
     const { from, to, label } = resolveRange(range, localTz)
-    const meta = await api('repos/' + repo)
-    const branch = meta.default_branch
-    const list = await api(
-      'repos/' + repo + '/commits?sha=' + branch +
-      '&since=' + iso(from) + '&until=' + iso(to) + '&per_page=' + cap,
-    )
+    // Cross-repo mode: read the caller's own repos directly. search/commits is
+    // deliberately avoided — it filters on `author:<login>` and so misses any
+    // commit authored under a different git identity.
+    const meta = isOwner ? await api('user') : await api('repos/' + repo)
+    const branch = isOwner ? 'all repos' : meta.default_branch
+    const list = isOwner
+      ? await commitsForOwner(cap, from, to)
+      : await api(
+          'repos/' + repo + '/commits?sha=' + branch +
+          '&since=' + iso(from) + '&until=' + iso(to) + '&per_page=' + cap,
+        ).then((l) => l.map((c) => ({ ...c, repo })))
     if (!list.length) { status('err', 'No commits found for ' + label); return }
 
     status('busy', 'Fetching stats for ' + list.length + ' commit' + (list.length > 1 ? 's' : '') + '…')
     const commits = []
     for (const c of list) {
-      const full = await api('repos/' + repo + '/commits/' + c.sha + '?per_page=300')
+      const full = await api('repos/' + c.repo + '/commits/' + c.sha + '?per_page=300')
       const files = full.files ?? []
       commits.push({
         sha: full.sha,
@@ -812,23 +857,26 @@ async function generate() {
         additions: files.reduce((a, f) => a + (f.additions ?? 0), 0),
         deletions: files.reduce((a, f) => a + (f.deletions ?? 0), 0),
         paths: files.map((f) => f.filename),
+        // Carried from the list item: a pooled cross-repo card attributes each row.
+        repo: c.repo,
       })
     }
 
     const typedHandle = $('handle').value.trim()
-    const handle = typedHandle || (meta.owner?.login ? '@' + meta.owner.login : null)
+    const handle = typedHandle || (isOwner ? '@' + meta.login : meta.owner?.login ? '@' + meta.owner.login : null)
     const html = renderCard({
       commits,
-      repoName: meta.name,
+      repoName: isOwner ? meta.login : meta.name,
       branch,
       title: $('title').value.trim() || undefined,
       label,
       tz: localTz,
-      avatar: meta.owner?.avatar_url ?? null,
+      avatar: isOwner ? meta.avatar_url ?? null : meta.owner?.avatar_url ?? null,
       handle,
       theme,
       preset,
       maxRows: 8,
+      showRepo: isOwner,
     })
     lastHtml = html
     paint(html, true)
@@ -842,8 +890,10 @@ async function generate() {
     $('dl').disabled = false
 
     const sum = summarise(commits)
+    const repoCount = new Set(commits.map((c) => c.repo)).size
     status('ok', repo + ' · ' + label + ' · ' + sum.all.commits +
       ' commit' + (sum.all.commits > 1 ? 's' : '') +
+      (isOwner && repoCount > 1 ? ' across ' + repoCount + ' repos' : '') +
       (list.length >= cap ? ' (browser cap reached — use the CLI for the full range)' : ''))
   } catch (e) {
     status('err', e.message)
