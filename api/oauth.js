@@ -137,7 +137,11 @@ async function finishLogin(req, res) {
     cookie(STATE_COOKIE, '', 0),
   ])
   // The token stays server-side; the page only learns that it worked.
-  return res.redirect(302, `${process.env.ALLOWED_ORIGIN}/?signedin=1`)
+  // ALLOWED_ORIGIN is the bare origin (https://iamtyroon.github.io) because that
+  // is what the CORS check compares. The app itself lives under a path, so the
+  // post-login return needs that path or it 404s at the domain root.
+  const returnTo = process.env.RETURN_PATH || '/commitcard/'
+  return res.redirect(302, `${process.env.ALLOWED_ORIGIN}${returnTo}?signedin=1`)
 }
 
 async function session(req, res) {
