@@ -237,6 +237,13 @@
     box-shadow:inset 2px 0 0 var(--accent-emphasis)}
   .picker button[aria-current="true"] .nm{font-weight:600}
  .picker .lock svg{fill:var(--accent-fg);opacity:.8}
+  /* "All my repositories" is a mode switch, not a repository. Set it apart with a
+     rule above the list and its own weight, so it never reads as just another repo. */
+  .picker button.allrepos{border-bottom:1px solid var(--border-default);
+    background:var(--canvas-subtle)}
+  .picker button.allrepos:hover,.picker button.allrepos:focus-visible{background:var(--accent-subtle)}
+  .picker button.allrepos .nm{font-weight:600}
+  .picker button.allrepos .own{color:var(--accent-fg)}
   /* Download and Copy are two ways to take the same artifact, so they sit as peers
      rather than stacking into a second and third full-width bar. */
   .exportrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
@@ -405,7 +412,7 @@
       <div class="field">
         <label for="repo">Repository</label>
         <input id="repo" value="iamtyroon/commitcard" spellcheck="false" autocomplete="off" placeholder="owner/name">
-        <div class="hint">Just a login (e.g. <code>iamtyroon</code>) pools every repo you can read, public and private. Needs a token.</div>
+        <div class="hint" id="poolHint">Just a login (e.g. <code>your-username</code>) pools every repo you can read, public and private.</div>
       </div>
 
       <div class="field" id="repoField" hidden>
@@ -694,6 +701,7 @@ async function loadViewer() {
   $('signout').hidden = false
   $('useToken').hidden = true
   $('auth').classList.add('signed')
+  updatePoolHint()
   // Only describe the credential the session is actually using.
   $('tokenNote').hidden = Boolean(API_BASE)
   $('brokerNote').hidden = !API_BASE
@@ -724,11 +732,21 @@ function renderPicker(filter) {
   const list = myRepos.filter(
     (r) => !q || r.full_name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q),
   )
-  if (!list.length) {
+  // "All repos" is a target, not a repository: it selects the bare login, which is
+  // what switches the card into cross-repo mode. Without this row the picker can
+  // only ever name one repo, and the pooled view is unreachable from the UI.
+  const allRow =
+    viewer && (!q || viewer.login.toLowerCase().includes(q) || 'all'.includes(q) || 'repos'.includes(q))
+      ? '<button type="button" class="allrepos" data-full="' + viewer.login + '"' +
+        (viewer.login === $('repo').value.trim() ? ' aria-current="true"' : '') + '>' +
+        '<span class="nm">All my repositories</span>' +
+        '<span class="own">' + myRepos.length + '</span></button>'
+      : ''
+  if (!list.length && !allRow) {
     $('picker').innerHTML = '<div class="none">No repositories match.</div>'
     return
   }
-  $('picker').innerHTML = list
+  $('picker').innerHTML = allRow + list
     .slice(0, 200)
     .map(
       (r) =>
@@ -746,6 +764,19 @@ function renderPicker(filter) {
       $('repoSearch').blur()
     })
   }
+}
+
+// The hint must not promise private-repo access the visitor does not have, and
+// must not hardcode someone else's login.
+function updatePoolHint() {
+  const el = $('poolHint')
+  if (!el) return
+  const who = viewer ? viewer.login : 'your-username'
+  const gate = viewer
+    ? ''
+    : ' Sign in first — private repos need a session.'
+  el.innerHTML =
+    'Just a login (e.g. <code>' + who + '</code>) pools every repo you can read, public and private.' + gate
 }
 
 async function signOut() {
@@ -860,8 +891,10 @@ async function generate() {
     status('err', 'Use owner/name, or just a login to scan all your repos')
     return
   }
-  if (isOwner && !token) {
-    status('err', 'Scanning all your repos needs a token — private repos require one. Sign in above.')
+  // `viewer`, not `token`: with the broker there is no token in the page at all —
+  // the session is an httpOnly cookie. Checking `token` wrongly blocked signed-in users.
+  if (isOwner && !viewer && !token) {
+    status('err', 'Scanning all your repos needs a signed-in session, so private repos can be read. Sign in above.')
     return
   }
 
@@ -869,7 +902,8 @@ async function generate() {
   const preset = $('preset').value
   const theme = $('theme').value
   // Signed-in requests are far cheaper, so analyse a bigger window.
-  const cap = token ? 200 : MAX_COMMITS
+  // Signed in (broker cookie or PAT) gets the larger, cheaper budget.
+  const cap = viewer || token ? 200 : MAX_COMMITS
   $('go').disabled = true
   $('dl').disabled = true
   $('copy').disabled = true
