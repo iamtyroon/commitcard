@@ -170,7 +170,10 @@ export function renderCard(opts) {
     : ''
 
   const avatarHtml = avatar
-    ? `<img class="av" src="${esc(avatar)}" alt="">`
+    // Self-closing: this markup is re-parsed as XML when the card is exported as an
+    // SVG image, and XML rejects a bare <img>. HTML tolerates it, which is why the
+    // preview looked fine while Download PNG failed.
+    ? `<img class="av" src="${esc(avatar)}" alt=""/>`
     : `<span class="av ph">${esc((repoName[0] ?? '#').toUpperCase())}</span>`
   const handleHtml = handle ? `<span class="handle">${esc(handle)}</span>` : ''
   const headTitle = esc(title ?? repoName)

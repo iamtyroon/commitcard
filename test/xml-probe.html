@@ -1,0 +1,102 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>xml probe</title>
+<body>
+<pre id="out">running…</pre>
+<script type="module">
+// Parses the card as strict XML — the same parser an SVG image uses — and reports
+// the exact failure, so the cause does not have to be guessed by bisection.
+import { renderCard } from '../src/render.mjs'
+
+const c = (o) => ({
+  sha: 'a'.repeat(40), shortSha: 'aaaaaaa', subject: 'feat: thing', author: 'a',
+  committedAt: Date.parse('2026-09-30T10:00:00Z'), files: 3, additions: 40,
+  deletions: 12, paths: ['a.ts'], ...o,
+})
+const html = renderCard({
+  commits: [c({})], repoName: 'commitcard', branch: 'main', label: '7 days', tz: 3,
+  avatar: 'https://avatars.githubusercontent.com/u/105237183?v=4',
+  handle: '@iamtyroon', theme: 'dark', preset: 'twitter', maxRows: 8,
+})
+
+const report = {}
+const wrapHtml = html.slice(html.indexOf('<div class="wrap">'))
+
+// 1. Full document, exactly as the export builds it.
+const style = html.match(/<style>([\s\S]*?)<\/style>/)[1]
+const w = 1600, h = 900
+const full =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
+  '<foreignObject width="100%" height="100%">' +
+  '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + w + 'px;height:' + h + 'px">' +
+  '<style>' + style + '</style>' + wrapHtml + '</div>' +
+  '</foreignObject></svg>'
+
+const doc = new DOMParser().parseFromString(full, 'image/svg+xml')
+const err = doc.querySelector('parsererror')
+report.fullXmlError = err ? err.textContent.replace(/\s+/g, ' ').slice(0, 400) : 'none'
+
+// 2. Which construct breaks? Test each block of the card separately.
+const blocks = {}
+const tmp = document.createElement('div')
+tmp.innerHTML = wrapHtml
+for (const child of tmp.children) {
+  const key = child.tagName.toLowerCase() + (child.className ? '.' + child.className.split(' ')[0] : '')
+  const one =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
+    '<foreignObject width="100%" height="100%">' +
+    '<div xmlns="http://www.w3.org/1999/xhtml">' + child.outerHTML + '</div>' +
+    '</foreignObject></svg>'
+  const d = new DOMParser().parseFromString(one, 'image/svg+xml')
+  blocks[key] = d.querySelector('parsererror') ? 'FAIL' : 'ok'
+}
+report.blocks = blocks
+
+const tryXml = (inner) => {
+  const s =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
+    '<foreignObject width="100%" height="100%">' +
+    '<div xmlns="http://www.w3.org/1999/xhtml">' + inner + '</div>' +
+    '</foreignObject></svg>'
+  const d = new DOMParser().parseFromString(s, 'image/svg+xml')
+  const e = d.querySelector('parsererror')
+  return e ? e.textContent.replace(/\s+/g, ' ').slice(0, 220) : 'ok'
+}
+
+// Print the offending markup for the two failing nodes.
+const head = tmp.querySelector('.wrap > div')
+const img = tmp.querySelector('.wrap img')
+report.headHtml = head ? head.outerHTML.slice(0, 500) : null
+report.imgHtml = img ? img.outerHTML.slice(0, 300) : null
+report.imgAlone = img ? tryXml(img.outerHTML) : null
+// Strip the img from the header div and retest.
+if (head) {
+  const c2 = head.cloneNode(true)
+  const i2 = c2.querySelector('img')
+  if (i2) i2.remove()
+  report.headWithoutImg = tryXml(c2.outerHTML)
+}
+
+// 3. If a block fails, drill into it.
+for (const [k, v] of Object.entries(blocks)) {
+  if (v !== 'FAIL') continue
+  const sel = k.split('.')[0]
+  const node = tmp.querySelector(sel)
+  if (!node) continue
+  const kids = {}
+  for (const g of node.querySelectorAll('*')) {
+    const gk = g.tagName.toLowerCase()
+    if (kids[gk]) continue
+    const one =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
+      '<foreignObject width="100%" height="100%">' +
+      '<div xmlns="http://www.w3.org/1999/xhtml">' + g.outerHTML + '</div>' +
+      '</foreignObject></svg>'
+    const d = new DOMParser().parseFromString(one, 'image/svg+xml')
+    kids[gk] = d.querySelector('parsererror') ? 'FAIL' : 'ok'
+  }
+  report['inside_' + k] = kids
+}
+
+document.getElementById('out').textContent = JSON.stringify(report, null, 1)
+</script>

@@ -1012,9 +1012,17 @@ async function renderPngBlob() {
       })
     } catch { img.remove() }
   }
+  // An SVG image is parsed as strict XML, where an unclosed void element invalidates
+  // the whole document and the SVG never loads. HTML serialisation always emits
+  // `<img ...>` with no closing slash — even from `<img/>` — so the serialised string
+  // is what has to be repaired, after cloning and before it goes into the data URI.
+  const markup = clone.outerHTML.replace(
+    /<(img|br|hr|source|wbr)\b([^>]*?)\/?>/g,
+    '<$1$2/>',
+  )
   const inner =
     '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + w + 'px;height:' + h + 'px">' +
-    '<style>' + style + '</style>' + clone.outerHTML + '</div>'
+    '<style>' + style + '</style>' + markup + '</div>'
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
     '<foreignObject width="100%" height="100%">' + inner + '</foreignObject></svg>'
@@ -1032,6 +1040,10 @@ async function renderPngBlob() {
   ctx.scale(scale, scale)
   ctx.drawImage(img, 0, 0)
   lastBlob = await new Promise((r) => canvas.toBlob(r, 'image/png'))
+  // toBlob yields null when the canvas is tainted — e.g. an <img> that could not be
+  // inlined and so is still cross-origin. Saying "PNG failed" with no cause is
+  // useless, so name it.
+  if (!lastBlob) throw new Error('the card image could not be exported (a remote image would taint the canvas)')
   return lastBlob
 }
 
@@ -1051,8 +1063,11 @@ async function download() {
     a.download = pngName()
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 4000)
-  } catch {
-    status('err', 'Could not build the PNG here. Right-click the preview and choose "Save image as", or use the CLI: ' + $('cmd').textContent)
+  } catch (e) {
+    // Surface the actual cause. A generic "could not build" is unactionable when
+    // the real failure is a tainted canvas, a CORS image, or a blocked download.
+    status('err', 'Could not build the PNG — ' + ((e && e.message) || e) +
+      ' — right-click the preview and choose "Save image as".')
   } finally {
     $('dl').textContent = prev
     $('dl').disabled = false
