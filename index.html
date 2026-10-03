@@ -514,7 +514,7 @@
             <span class="tag">full power</span>
           </div>
           <pre id="cmd">npx commitcard --repo owner/name today</pre>
-          <p class="note">
+          <p class="note" id="limitNote">
           Signed out, the page uses the public GitHub API (60 requests/hour per IP, 30 commits).
           Signed in, it uses your session (5,000 requests/hour, 200 commits) and can read
           private repositories. The CLI goes further still: local git via <code>--cwd .</code>
@@ -705,6 +705,7 @@ async function loadViewer() {
   // Only describe the credential the session is actually using.
   $('tokenNote').hidden = Boolean(API_BASE)
   $('brokerNote').hidden = !API_BASE
+  updateLimitNote()
   $('repoHead').hidden = false
   $('repoField').hidden = false
   $('repoSearch').hidden = false
@@ -779,6 +780,17 @@ function updatePoolHint() {
     'Just a login (e.g. <code>' + who + '</code>) pools every repo you can read, public and private.' + gate
 }
 
+// Describe only the budget that applies right now. Telling a signed-in visitor
+// "signed out, 60 requests/hour" is both noise and false.
+function updateLimitNote() {
+  const el = $('limitNote')
+  if (!el) return
+  const cli = 'The CLI goes further still: local git via <code>--cwd .</code> and no caps.'
+  el.innerHTML = viewer
+    ? 'Signed in, this page uses your session (5,000 requests/hour, 200 commits) and can read private repositories. ' + cli
+    : 'Signed out, the page uses the public GitHub API (60 requests/hour per IP, 30 commits). Sign in for private repositories and a larger budget. ' + cli
+}
+
 async function signOut() {
   if (API_BASE) {
     // Clear the httpOnly cookie server-side; the page cannot do it itself.
@@ -798,6 +810,7 @@ async function signOut() {
   $('auth').classList.remove('signed')
   $('tokenNote').hidden = false
   $('brokerNote').hidden = true
+  updateLimitNote()
   $('repoHead').hidden = true
   $('repoField').hidden = true
   $('repoSearch').hidden = true
