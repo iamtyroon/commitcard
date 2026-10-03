@@ -142,7 +142,19 @@
   /* Banner (auth) — Primer's Box with a subtle accent when signed in */
   .auth{background:var(--canvas-subtle);border:1px solid var(--border-default);border-radius:6px;
     padding:12px 16px;margin-bottom:16px;transition:border-color .2s ease,background-color .2s ease}
-  .auth.signed{border-color:var(--success-emphasis)}
+ .auth.signed{border-color:var(--success-emphasis)}
+  /* Signed in, the banner is one line of identity. The security note can be long,
+     so it collapses by default rather than pushing the tool down the page. */
+  .auth.signed details{margin-top:0}
+ .auth .note{margin:10px 0 0}
+ .auth details>.note{margin:8px 0 0}
+  .summary{cursor:pointer;color:var(--fg-muted);font-size:12px;list-style:none;
+    display:inline-flex;align-items:center;gap:6px;user-select:none}
+  .summary::-webkit-details-marker{display:none}
+  .summary::before{content:"";width:0;height:0;border:4px solid transparent;
+    border-left-color:currentColor;transition:transform .15s ease}
+  details[open]>.summary::before{transform:rotate(90deg) translateX(-1px)}
+  .summary:hover{color:var(--fg-default)}
   .authrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:32px}
   .signedout{display:flex;align-items:center;gap:10px;flex:1;flex-wrap:wrap}
   .who{display:flex;align-items:center;gap:8px;min-width:0}
@@ -216,8 +228,18 @@
   .picker button:hover,.picker button:focus-visible{background:var(--accent-subtle);outline:none}
   .picker .lock{flex:0 0 auto;display:grid;place-items:center}
   .picker .lock svg{width:14px;height:14px;fill:var(--fg-muted);display:block}
-  .picker .own{color:var(--fg-subtle);font-size:12px;margin-left:auto;font-family:var(--mono)}
-  .picker .none{padding:16px;color:var(--fg-muted);font-size:13px;text-align:center}
+ .picker .own{color:var(--fg-subtle);font-size:12px;margin-left:auto;font-family:var(--mono)}
+ .picker .none{padding:16px;color:var(--fg-muted);font-size:13px;text-align:center}
+  /* The repo name is the content; owner is metadata. Give the name the weight and
+     let the private mark read as state rather than as another list item. */
+  .picker .nm{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .picker button[aria-current="true"]{background:var(--accent-subtle);
+    box-shadow:inset 2px 0 0 var(--accent-emphasis)}
+  .picker button[aria-current="true"] .nm{font-weight:600}
+ .picker .lock svg{fill:var(--accent-fg);opacity:.8}
+  /* Download and Copy are two ways to take the same artifact, so they sit as peers
+     rather than stacking into a second and third full-width bar. */
+  .exportrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 
   /* Stage */
   .stage{overflow:hidden}
@@ -240,8 +262,28 @@
   .scaler.reveal{animation:reveal .45s cubic-bezier(.16,1,.3,1) both}
   @keyframes reveal{from{opacity:0;translate:0 10px;filter:blur(6px)}to{opacity:1;filter:blur(0)}}
   iframe{position:absolute;top:0;left:0;border:0;display:block;background:transparent}
-  .empty{color:var(--fg-muted);font-size:14px;line-height:1.6;padding:88px 20px;text-align:center;max-width:460px}
+  .empty{color:var(--fg-muted);font-size:14px;line-height:1.6;padding:64px 24px 56px;
+    text-align:center;max-width:520px;margin:0 auto}
   .empty code{background:var(--neutral-muted);border-radius:6px;padding:2px 6px;display:inline-block;margin-top:2px}
+  /* A skeleton of the artifact, so the empty stage previews what is about to exist
+     instead of reading as a void. Drawn, not decorated. */
+  .emptycard{border:1px solid var(--border-default);border-radius:6px;background:var(--canvas-default);
+    box-shadow:var(--shadow-md);overflow:hidden;margin:0 auto 22px;max-width:420px;text-align:left;
+    display:flex;flex-direction:column}
+  /* Prefixed on purpose: a bare .bar collides with the stats row's .bar, whose
+     min-height:40px would stretch this into a grey block. */
+  .emptycard .hr{height:1px;flex:0 0 1px;background:var(--border-default)}
+  .emptycard .hd{display:flex;align-items:center;gap:9px;padding:11px 14px;background:var(--canvas-subtle)}
+  .emptycard .av{width:18px;height:18px;border-radius:50%;background:var(--accent-subtle);
+    border:1px solid var(--accent-fg);flex:0 0 auto}
+  .emptycard .ttl{font-weight:600;font-size:12.5px;color:var(--fg-default)}
+  .emptycard .hd .sp{flex:1}
+  .emptycard .pill{border:1px solid var(--border-default);border-radius:2em;padding:1px 8px;
+    font:600 10px var(--mono);color:var(--fg-muted)}
+  .emptycard .rows{padding:12px 14px;display:grid;gap:8px}
+  .emptycard .ln{height:8px;border-radius:3px;background:var(--neutral-muted)}
+  .emptycard .ln.add{background:var(--success-fg);opacity:.55}
+  .emptycard .ln.del{background:var(--danger-fg);opacity:.5}
 
   /* Stats — Primer's bordered stat row */
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
@@ -343,11 +385,18 @@
              placeholder="Paste a personal access token (repo scope)">
       <button class="btn" id="tokenGo" type="button">Use token</button>
     </div>
-    <p class="note">
-      Your token is kept in this tab only (memory + sessionStorage) and sent nowhere except
-      <code>api.github.com</code>. It is never written to disk by this page and disappears when
-      you close the tab. Prefer the CLI for long-lived access: <code>gh auth login</code>.
-    </p>
+    <details id="authNote">
+      <summary class="note summary">How your credentials are handled</summary>
+      <p class="note" id="tokenNote">
+        Your token is kept in this tab only (memory + sessionStorage) and sent nowhere except
+        <code>api.github.com</code>. It is never written to disk by this page and disappears when
+        you close the tab. Prefer the CLI for long-lived access: <code>gh auth login</code>.
+      </p>
+      <p class="note" id="brokerNote" hidden>
+        Signed in through the OAuth broker. Your token stays server-side in an httpOnly cookie —
+        this page never reads it. Revoking the app on GitHub ends the session.
+      </p>
+    </details>
   </div>
 
   <div class="cols">
@@ -406,8 +455,10 @@
           <svg class="btnicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.79 2.5a.75.75 0 0 1 .5.75v6.5a.75.75 0 0 1-1.28.53l-2.5-2.22a.75.75 0 0 1 0-1.06L4.78 6.25H3.75A1.75 1.75 0 0 1 2 4.5v-.63a.75.75 0 0 1 .75-.75h1.03a.75.75 0 0 1 .5.19l2.51-.08Z"/></svg>
           Generate card
         </button>
-      <button class="btn secondary" id="dl" type="button" style="width:100%;margin-top:8px" disabled>Download PNG</button>
-      <button class="btn secondary" id="copyPng" type="button" style="width:100%;margin-top:8px" disabled>Copy PNG</button>
+      <div class="exportrow">
+        <button class="btn secondary" id="dl" type="button" disabled>Download PNG</button>
+        <button class="btn secondary" id="copyPng" type="button" disabled>Copy PNG</button>
+      </div>
       </div>
     </form>
 
@@ -422,6 +473,23 @@
         </div>
         <div class="viewport" id="viewport">
           <div class="empty" id="empty">
+            <div class="emptycard" aria-hidden="true">
+              <div class="hd">
+                <span class="av"></span>
+                <span class="ttl">Your card appears here</span>
+                <span class="sp"></span>
+                <span class="pill">7d</span>
+              </div>
+              <div class="hr"></div>
+              <div class="rows">
+                <div class="ln" style="width:62%"></div>
+                <div class="ln" style="width:88%"></div>
+                <div class="ln" style="width:44%"></div>
+                <div class="ln" style="width:74%"></div>
+                <div class="ln add" style="width:12%"></div>
+                <div class="ln del" style="width:9%"></div>
+              </div>
+            </div>
             Pick a repository and hit <b>Generate card</b>.<br><br>
             Sign in to include your private repositories, or use the CLI for local git
             and unlimited ranges:<br><br><code>npx commitcard --repo owner/name today</code>
@@ -626,6 +694,9 @@ async function loadViewer() {
   $('signout').hidden = false
   $('useToken').hidden = true
   $('auth').classList.add('signed')
+  // Only describe the credential the session is actually using.
+  $('tokenNote').hidden = Boolean(API_BASE)
+  $('brokerNote').hidden = !API_BASE
   $('repoHead').hidden = false
   $('repoField').hidden = false
   $('repoSearch').hidden = false
@@ -661,9 +732,10 @@ function renderPicker(filter) {
     .slice(0, 200)
     .map(
       (r) =>
-        '<button type="button" data-full="' + r.full_name + '">' +
+        '<button type="button" data-full="' + r.full_name + '"' +
+        (r.full_name === $('repo').value.trim() ? ' aria-current="true"' : '') + '>' +
         (r.private ? '<span class="lock" title="Private">' + LOCK + '</span>' : '') +
-        '<span>' + r.name + '</span>' +
+        '<span class="nm">' + r.name + '</span>' +
         '<span class="own">' + r.owner.login + '</span></button>',
     )
     .join('')
@@ -693,6 +765,8 @@ async function signOut() {
   $('signout').hidden = true
   $('useToken').hidden = false
   $('auth').classList.remove('signed')
+  $('tokenNote').hidden = false
+  $('brokerNote').hidden = true
   $('repoHead').hidden = true
   $('repoField').hidden = true
   $('repoSearch').hidden = true
