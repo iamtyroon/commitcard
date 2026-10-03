@@ -143,6 +143,11 @@ try {
   // inline failed silently the corner would be the panel colour, not the border.
   const probe = ctx.getImageData(30 * scale, 18 * scale, 1, 1).data
   note('avatar-pixel', { r: probe[0], g: probe[1], b: probe[2], a: probe[3] })
+
+  // Text colour: the exported markup must not fall back to black on a dark card,
+  // which happens when the body's `color` is dropped with the un-cloned body.
+  const textPixel = ctx.getImageData(200 * scale, 120 * scale, 1, 1).data
+  note('text-pixel', { r: textPixel[0], g: textPixel[1], b: textPixel[2] })
   const bitmap = await createImageBitmap(blob)
   note('bitmap', { w: bitmap.width, h: bitmap.height })
   out.ok = !!blob

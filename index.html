@@ -1021,7 +1021,12 @@ async function renderPngBlob() {
     '<$1$2/>',
   )
   const inner =
-    '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + w + 'px;height:' + h + 'px">' +
+    // `color:var(--text)` is declared on the card's <body>, but only .wrap is
+    // cloned, so without carrying the body colour the exported text falls back to
+    // black and is unreadable on a dark card. --text is a CSS custom property, so
+    // resolving it here reproduces exactly what the body rule computed.
+    '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + w + 'px;height:' + h +
+    'px;color:var(--text)">' +
     '<style>' + style + '</style>' + markup + '</div>'
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
