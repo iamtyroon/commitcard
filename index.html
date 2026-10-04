@@ -563,6 +563,10 @@ const API_BASE = 'https://commitcard-gray.vercel.app'
 // closes, never written to disk, and only ever sent to api.github.com.
 let token = sessionStorage.getItem('commitcard:token') || ''
 let viewer = null
+// True until we have asked the broker whether a session exists. While it is, a
+// 401 from the broker means "nobody signed in", after which we fall back to the
+// public API instead of retrying a session-less broker on every request.
+let sessionUnknown = Boolean(API_BASE)
 let myRepos = []
 
 function setToken(t) {
@@ -617,12 +621,20 @@ async function api(path) {
   // Only when signed in. The broker has no cookie for an anonymous visitor, so
   // routing them through it would 401 on requests the public API answers happily
   // — signing out would break every public repo, not just private ones.
-  const viaBroker = API_BASE && (viewer || token)
+  // A broker session exists even before this page knows who it belongs to: the
+  // cookie is httpOnly, so the only way to learn it is to ask the broker. Probe
+  // there on first load; `viewer` alone would be false exactly when the restore
+  // call needs the broker, and every signed-in visitor would look signed out.
+  const viaBroker = API_BASE && (viewer || token || sessionUnknown)
   if (viaBroker) {
     const res = await fetch(API_BASE + '/api/gh?gh=' + encodeURIComponent(path), {
       credentials: 'include',
     })
-    if (res.status === 401) throw new Error('Your GitHub session expired. Sign in again.')
+    if (res.status === 401) {
+      // No usable session. Stop probing the broker so public repos keep working.
+      sessionUnknown = false
+      throw new Error('Your GitHub session expired. Sign in again.')
+    }
     if (!res.ok) throw new Error('GitHub API error ' + res.status)
     return res.json()
   }
@@ -720,6 +732,7 @@ function initTheme() {
 
 async function loadViewer() {
   viewer = await api('user')
+  sessionUnknown = false
   $('whoAvatar').style.backgroundImage = 'url("' + viewer.avatar_url + '")'
   $('whoName').textContent = viewer.name || viewer.login
   $('whoMeta').textContent = '@' + viewer.login
@@ -1213,7 +1226,10 @@ if (API_BASE) {
       if (back) history.replaceState(null, '', location.pathname)
       status('ok', 'Signed in as @' + viewer.login + ' — private repos unlocked.')
     })
-    .catch(() => status('', 'Sign in with GitHub to read private repositories.'))
+    .catch(() => {
+      sessionUnknown = false
+      status('', 'Sign in with GitHub to read private repositories.')
+    })
 } else if (token) {
   loadViewer()
     .then(() => status('ok', 'Signed in as @' + viewer.login + ' — private repos unlocked.'))

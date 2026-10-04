@@ -5,20 +5,46 @@ import assert from 'node:assert/strict'
 // exists. The broker reads its token from an httpOnly cookie, so an anonymous
 // visitor has none: sending them through it 401s every request and breaks even
 // public repos that api.github.com answers happily.
-export const viaBroker = ({ apiBase, viewer, token }) =>
-  Boolean(apiBase && (viewer || token))
+export const viaBroker = ({ apiBase, viewer, token, sessionUnknown }) =>
+  Boolean(apiBase && (viewer || token || sessionUnknown))
 
 test('signed out, calls go straight to the public API', () => {
-  assert.equal(viaBroker({ apiBase: 'https://x.vercel.app', viewer: null, token: '' }), false)
+  assert.equal(
+    viaBroker({ apiBase: 'https://x.vercel.app', viewer: null, token: '', sessionUnknown: false }),
+    false,
+  )
 })
 
 test('signed in via the broker cookie, calls use the broker', () => {
   // viewer is set from the session; there is deliberately no token in the page.
-  assert.equal(viaBroker({ apiBase: 'https://x.vercel.app', viewer: { login: 'a' }, token: '' }), true)
+  assert.equal(
+    viaBroker({ apiBase: 'https://x.vercel.app', viewer: { login: 'a' }, token: '', sessionUnknown: false }),
+    true,
+  )
 })
 
 test('signed in with a PAT and no broker, calls stay direct', () => {
-  assert.equal(viaBroker({ apiBase: '', viewer: null, token: 'ghp_x' }), false)
+  assert.equal(viaBroker({ apiBase: '', viewer: null, token: 'ghp_x', sessionUnknown: false }), false)
+})
+
+test('on first load the broker is probed even with no viewer', () => {
+  // The cookie is httpOnly, so the only way to discover a session is to ask.
+  // Routing by `viewer` alone would leave every signed-in visitor looking
+  // signed out on their first load.
+  assert.equal(
+    viaBroker({ apiBase: 'https://x.vercel.app', viewer: null, token: '', sessionUnknown: true }),
+    true,
+  )
+})
+
+test('a 401 from the broker ends the probing', () => {
+  // Once the broker has said 401 there is no session; continuing to probe it
+  // would break every public repo for a signed-out visitor.
+  const sessionUnknown = false
+  assert.equal(
+    viaBroker({ apiBase: 'https://x.vercel.app', viewer: null, token: '', sessionUnknown }),
+    false,
+  )
 })
 
 test('a viewer object alone never counts as a token', () => {
