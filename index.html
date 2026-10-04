@@ -613,7 +613,12 @@ async function api(path) {
   // When the broker is configured, GitHub calls go through it. The token never
   // enters this page: the worker reads it from the cookie and forwards only the
   // API response, so the browser sees plain JSON like the direct path does.
-  if (API_BASE) {
+  //
+  // Only when signed in. The broker has no cookie for an anonymous visitor, so
+  // routing them through it would 401 on requests the public API answers happily
+  // — signing out would break every public repo, not just private ones.
+  const viaBroker = API_BASE && (viewer || token)
+  if (viaBroker) {
     const res = await fetch(API_BASE + '/api/gh?gh=' + encodeURIComponent(path), {
       credentials: 'include',
     })
@@ -640,13 +645,30 @@ function status(kind, text) {
 // Pool the caller's commits across every repo they can read, public and private.
 // Repos are pre-filtered on pushed_at so an idle account costs one call each.
 async function commitsForOwner(cap, from, to) {
+  const signedIn = Boolean(viewer || token)
   const repos = []
-  for (let page = 1; page <= 4; page++) {
-    const batch = await api(
-      'user/repos?affiliation=owner,collaborator,organization_member&sort=pushed&per_page=100&page=' + page,
-    )
-    repos.push(...batch)
-    if (batch.length < 100) break
+  if (signedIn) {
+    // Signed in: the authenticated listing sees public *and* private repos.
+    for (let page = 1; page <= 4; page++) {
+      const batch = await api(
+        'user/repos?affiliation=owner,collaborator,organization_member&sort=pushed&per_page=100&page=' + page,
+      )
+      repos.push(...batch)
+      if (batch.length < 100) break
+    }
+  } else {
+    // Signed out: user/repos is 401 anonymously, so enumerate public repos via
+    // search instead. Private repos are unreachable without a session, which is
+    // the honest ceiling for a logged-out visitor.
+    for (let page = 1; page <= 4; page++) {
+      const batch = await api(
+        'search/repositories?q=' +
+          encodeURIComponent('user:' + ownerLogin() + ' fork:true') +
+          '&sort=pushed&order=desc&per_page=100&page=' + page,
+      )
+      repos.push(...(batch.items ?? []))
+      if (batch.items?.length < 100) break
+    }
   }
   const active = repos
     .filter((r) => r.pushed_at && Date.parse(r.pushed_at) >= from)
@@ -664,6 +686,12 @@ async function commitsForOwner(cap, from, to) {
     }
   }
   return out
+}
+
+// The login being pooled. Taken from the field so a signed-out visitor scanning
+// their public repos gets their own handle, not whoever last signed in.
+function ownerLogin() {
+  return $('repo').value.trim()
 }
 
 // ---- auth + repo picker ---------------------------------------------------
@@ -904,12 +932,11 @@ async function generate() {
     status('err', 'Use owner/name, or just a login to scan all your repos')
     return
   }
-  // `viewer`, not `token`: with the broker there is no token in the page at all —
-  // the session is an httpOnly cookie. Checking `token` wrongly blocked signed-in users.
-  if (isOwner && !viewer && !token) {
-    status('err', 'Scanning all your repos needs a signed-in session, so private repos can be read. Sign in above.')
-    return
-  }
+  // A bare login works signed out too, but only across PUBLIC repos: enumerating
+  // your private ones needs a session. Say which one is happening rather than
+  // failing on a 401 later.
+  const signedIn = Boolean(viewer || token)
+  if (isOwner && !signedIn) status('busy', 'Scanning your public repositories…')
 
   const range = $('range').value
   const preset = $('preset').value
@@ -928,7 +955,11 @@ async function generate() {
     // Cross-repo mode: read the caller's own repos directly. search/commits is
     // deliberately avoided — it filters on `author:<login>` and so misses any
     // commit authored under a different git identity.
-    const meta = isOwner ? await api('user') : await api('repos/' + repo)
+    // api('user') needs a session. Signed out, read the public profile endpoint,
+    // which works anonymously and carries the same login/avatar fields.
+    const meta = isOwner
+      ? await (viewer || token ? api('user') : api('users/' + repo))
+      : await api('repos/' + repo)
     const branch = isOwner ? 'all repos' : meta.default_branch
     const list = isOwner
       ? await commitsForOwner(cap, from, to)
@@ -991,7 +1022,8 @@ async function generate() {
     const repoCount = new Set(commits.map((c) => c.repo)).size
     status('ok', repo + ' · ' + label + ' · ' + sum.all.commits +
       ' commit' + (sum.all.commits > 1 ? 's' : '') +
-      (isOwner && repoCount > 1 ? ' across ' + repoCount + ' repos' : '') +
+      (isOwner && repoCount > 0 ? ' across ' + repoCount + ' public repo' + (repoCount > 1 ? 's' : '') : '') +
+      (isOwner && !signedIn ? ' — sign in to include private repos' : '') +
       (list.length >= cap ? ' (browser cap reached — use the CLI for the full range)' : ''))
   } catch (e) {
     status('err', e.message)
