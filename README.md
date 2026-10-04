@@ -60,6 +60,7 @@ the personal-token flow.
 | | Signed out | Signed in |
 |---|---|---|
 | Repositories | public only | public **and private** |
+| All-repos card (`iamtyroon`) | public repos only | every repo you can read |
 | Commits analysed | 30 | 200 |
 | API rate limit | 60 / hour per IP | 5,000 / hour |
 
@@ -111,9 +112,11 @@ can reach — public *and* private — into a single set of totals:
 npx commitcard --repo iamtyroon week
 ~~~
 
-This needs a signed-in session, because private repos are only readable with your
-credentials: `gh auth login`, or `GITHUB_TOKEN`. Each row is tagged with the repo it
-came from (`commitcard@cfc5c35`), and the header badge shows how many repos were
+Signed out this still works, across your **public** repos only. They are enumerated
+through repository search, and the status line names the scope it counted. Sign in
+(`gh auth login`, or **Sign in with GitHub** on the page) to include private repos
+too, since those need your credentials. Each row is tagged with the repo it came
+from (`commitcard@cfc5c35`), and the header badge shows how many repos were
 pooled. Automation commits (Actions, Dependabot) are excluded by default; pass
 `--include-bots` to count them.
 
